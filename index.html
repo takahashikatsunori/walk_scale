@@ -675,6 +675,10 @@
     }
 
     @media (max-width: 480px) {
+      .top-bar {
+        gap: 3.5px;
+        right: 44px;
+      }
       .bottom-dock {
         bottom: 8px;
         width: min(78vw, 304px);
@@ -685,8 +689,9 @@
         bottom: 88px !important;
       }
       .mode-btn, .pill-btn {
-        font-size: 10.5px;
-        padding: 4.5px 7.5px;
+        font-size: 10px;
+        padding: 4px 6px;
+        gap: 2px;
       }
     }
   </style>
@@ -712,11 +717,14 @@
         📏 計測
       </button>
     </div>
-    <button id="btnToggleScale" class="pill-btn active" type="button" onclick="toggleScaleOverlay()" title="グラデーション・スケール表示のON/OFF（地図のみモード切替）">
-      🌈 スケールON
+    <button id="btnToggleMetric" class="pill-btn" type="button" onclick="toggleScaleMetric()" title="実距離スケールと消費エネルギー（勾配考慮kcal）スケールを切り替え">
+      📏 距離
     </button>
-    <button id="btnToggleFacilities" class="pill-btn active" type="button" onclick="toggleFacilitiesLayer()">
-      🏫 避難・給水所
+    <button id="btnToggleScale" class="pill-btn active" type="button" onclick="toggleScaleOverlay()" title="グラデーション・スケール表示のON/OFF（地図のみモード切替）">
+      🌈 表示ON
+    </button>
+    <button id="btnToggleFacilities" class="pill-btn active" type="button" onclick="toggleFacilitiesLayer()" title="避難所・給水拠点の表示ON/OFF">
+      🏫 施設
     </button>
     <button id="btnOpenExport" class="pill-btn export-btn" type="button" onclick="openExportModal()">
       📥 保存
@@ -744,7 +752,7 @@
       </button>
     </div>
 
-    <!-- グラデーション＆時間・距離凡例 -->
+    <!-- グラデーション＆時間・距離・エネルギー凡例 -->
     <div id="legendContainer" class="legend-container">
       <div id="legendLabelsTop" class="legend-labels-top"></div>
       <div class="legend-bar-wrap">
@@ -761,18 +769,26 @@
       </div>
       <div id="legendLabelsBottom" class="legend-labels-bottom"></div>
       <div class="legend-caption">
-        <span>▲距離 ／ ▼徒歩時間</span>
+        <span id="legendCaptionLeft">▲距離 ／ ▼徒歩時間</span>
         <span id="zoomStatusText">Z: 16.0</span>
       </div>
     </div>
 
     <!-- 設定ドロワー（展開時のみ表示） -->
     <div id="settingsDrawer" class="settings-drawer">
-      <!-- 0. グラデーション・スケール表示 ON/OFF -->
+      <!-- 0. スケール基準（距離 ⇔ 消費エネルギー・勾配考慮）＆ 片道/往復 -->
       <div class="setting-section">
         <div class="setting-label">
-          <span>🌈 計算結果（グラデーション）表示</span>
-          <span id="scaleVisStatusLabel" class="setting-subvalue">表示中 (ON)</span>
+          <span>🔥 スケール基準（勾配・標高考慮）</span>
+          <span id="scaleMetricStatusLabel" class="setting-subvalue">実距離 (m)</span>
+        </div>
+        <div class="chip-row" id="scaleMetricChipGroup" style="margin-bottom:4px;">
+          <button type="button" class="chip active" data-metric="distance" onclick="setScaleMetric('distance')">📏 実距離スケール</button>
+          <button type="button" class="chip" data-metric="energy" onclick="setScaleMetric('energy')">🔥 消費エネルギー (kcal)</button>
+        </div>
+        <div class="chip-row" id="directionChipGroup" style="margin-bottom:4px;">
+          <button type="button" class="chip active" data-dir="oneway" onclick="setDirectionMode('oneway')">➡️ 片道（出発地から移動）</button>
+          <button type="button" class="chip" data-dir="roundtrip" onclick="setDirectionMode('roundtrip')">🔄 往復（給水・運搬して帰還）</button>
         </div>
         <div class="chip-row" id="scaleVisChipGroup">
           <button type="button" class="chip active" data-vis="on" onclick="setScaleOverlay(true)">🌈 スケール表示 ON</button>
@@ -780,17 +796,17 @@
         </div>
       </div>
 
-      <!-- 1. 歩くペース -->
+      <!-- 1. 歩くペース（体重60kg＋荷物重量自動連動） -->
       <div class="setting-section">
         <div class="setting-label">
-          <span>🚶 歩くペース</span>
-          <span id="paceDetailLabel" class="setting-subvalue">50 m/分（3.0 km/h）</span>
+          <span>🚶 歩くペース・荷物</span>
+          <span id="paceDetailLabel" class="setting-subvalue">50 m/分（計70kg）</span>
         </div>
         <div class="chip-row">
-          <button type="button" class="chip" data-pace="80" onclick="setWalkingPace(80, '🚶 一般 80m/分')">🚶 一般<br><small>80m/分</small></button>
-          <button type="button" class="chip" data-pace="60" onclick="setWalkingPace(60, '👵 高齢・子 60m/分')">👵 高齢・子<br><small>60m/分</small></button>
-          <button type="button" class="chip active" data-pace="50" onclick="setWalkingPace(50, '💧 水運搬 50m/分')">💧 水運搬<br><small>50m/分</small></button>
-          <button type="button" class="chip" data-pace="40" onclick="setWalkingPace(40, '🐢 重荷物 40m/分')">🐢 重荷物<br><small>40m/分</small></button>
+          <button type="button" class="chip" data-pace="80" onclick="setWalkingPace(80, '🚶 一般 80m/分')">🚶 一般<br><small>80m/分・60kg</small></button>
+          <button type="button" class="chip" data-pace="60" onclick="setWalkingPace(60, '👵 高齢・子 60m/分')">👵 高齢・子<br><small>60m/分・+3kg</small></button>
+          <button type="button" class="chip active" data-pace="50" onclick="setWalkingPace(50, '💧 水運搬 50m/分')">💧 水運搬<br><small>50m/分・+10kg</small></button>
+          <button type="button" class="chip" data-pace="40" onclick="setWalkingPace(40, '🐢 重荷物 40m/分')">🐢 重荷物<br><small>40m/分・+20kg</small></button>
         </div>
         <div class="pace-slider-row">
           <span style="font-size:9.5px; color:#64748b;">遅</span>
@@ -799,10 +815,10 @@
         </div>
       </div>
 
-      <!-- 2. 最大表示距離 -->
+      <!-- 2. 最大表示範囲 -->
       <div class="setting-section">
         <div class="setting-label">
-          <span>📏 最大計算距離</span>
+          <span id="maxRangeTitleLabel">📏 最大計算範囲</span>
           <span id="maxDistDetailLabel" class="setting-subvalue">3,000 m</span>
         </div>
         <div class="chip-row" id="maxDistChipGroup">
@@ -835,10 +851,11 @@
           <span>🎨 ラベル内容 ＆ 配色テーマ</span>
         </div>
         <div class="chip-row" id="labelContentChipGroup" style="margin-bottom:4px;">
-          <button type="button" class="chip active" data-content="both" onclick="setLabelContent('both')">距離＋時間</button>
-          <button type="button" class="chip" data-content="dist" onclick="setLabelContent('dist')">距離のみ</button>
-          <button type="button" class="chip" data-content="time" onclick="setLabelContent('time')">時間のみ</button>
-          <button type="button" class="chip" data-content="none" onclick="setLabelContent('none')">線のみ</button>
+          <button type="button" class="chip active" data-content="both" id="lblChipBoth" onclick="setLabelContent('both')">距離＋時間</button>
+          <button type="button" class="chip" data-content="kcal" id="lblChipKcal" onclick="setLabelContent('kcal')">距離＋kcal</button>
+          <button type="button" class="chip" data-content="elev" id="lblChipElev" onclick="setLabelContent('elev')">＋標高差</button>
+          <button type="button" class="chip" data-content="dist" id="lblChipPrimary" onclick="setLabelContent('dist')">距離のみ</button>
+          <button type="button" class="chip" data-content="none" id="lblChipNone" onclick="setLabelContent('none')">線のみ</button>
         </div>
         <div class="chip-row" id="paletteChipGroup">
           <button type="button" class="chip active" data-palette="standard" onclick="setColorPalette('standard')">🌈 標準</button>
@@ -924,17 +941,21 @@
     let currentPaletteKey = 'standard';
     let walkingPace = 50; // m/分 (デフォルト: 水運搬目安 50m/分)
     let currentPaceLabel = '💧 水運搬 50m/分';
-    let maxDistance = 3000; // m (最大3km)
-    let tickIntervalSetting = 'auto'; // 'auto' | 50 | 100 | 250 | 500
-    let labelContentMode = 'both'; // 'both' | 'dist' | 'time' | 'none'
+    let maxDistance = 3000; // m (距離モード時 500〜3000m / エネルギーモード時は 1/10 の 50〜300kcal に対応)
+    let scaleMetric = 'distance'; // 'distance' (実距離 m) | 'energy' (消費エネルギー kcal・勾配考慮)
+    let directionMode = 'oneway'; // 'oneway' (片道: 出発地→各地点) | 'roundtrip' (往復: 行き軽装＋帰り荷物運搬)
+    let tickIntervalSetting = 'auto'; // 'auto' | 50 | 100 | 250 | 500 (distance単位換算: stepMod = 1, 2, 5, 10)
+    let labelContentMode = 'both'; // 'both' | 'kcal' | 'elev' | 'dist' | 'none'
     let tapMode = 'start'; // 'start' | 'measure'
     let showFacilities = true;
     let showScaleOverlay = true; // デフォルトはグラデーション表示ON
 
+    const BASE_BODY_WEIGHT_KG = 60; // 標準体重 60kg
+
     // 道路グラフ構造
-    let roadNodes = []; // [[lon, lat], ...]
-    let roadEdges = []; // [{ u, v, len }, ...]
-    let roadAdj = [];   // [[{ to, len, edgeIdx }, ...], ...]
+    let roadNodes = []; // [[lon, lat, elev], ...]
+    let roadEdges = []; // [{ u, v, len, uElev, vElev }, ...]
+    let roadAdj = [];   // [[{ to, len, edgeIdx, fromElev, toElev }, ...], ...]
     let spatialGrid = new Map();
     const GRID_SCALE = 200; // 約500mメッシュ
 
@@ -942,8 +963,12 @@
     let startPoint = [139.4756, 35.7262]; // 初期位置（小平市中心部・津田町付近）
     let startPointName = null;
     let snapInfo = null;
-    let nodeDist = null;
+    let nodeDist = null;    // 累積片道距離 (m)
+    let nodeEnergy = null;  // 累積消費エネルギー (kcal・勾配考慮)
+    let nodeAscent = null;  // 累積上り標高獲得 (m)
+    let nodeDescent = null; // 累積下り標高損失 (m)
     let nodeParent = null;
+    let stepStats = new Array(61).fill(null); // 各stepIdx(1..60)における平均距離・kcal・標高差の統計
     let targetPoint = null;
     let targetPointName = null;
     let targetRouteCoords = null;
@@ -1019,7 +1044,7 @@
     });
 
     // =========================================================================
-    // 3. 幾何・カラー補助関数
+    // 3. 幾何・カラー・勾配エネルギー計算補助関数
     // =========================================================================
     function haversineMeters(lon1, lat1, lon2, lat2) {
       const R = 6371000;
@@ -1059,6 +1084,54 @@
       return expr;
     }
 
+    // 選択中の歩くペースに応じた自動荷物重量 (kg) と説明ラベル
+    function getLoadInfoForPace(pace = walkingPace) {
+      if (pace <= 42) {
+        return { loadKg: 20, totalKg: BASE_BODY_WEIGHT_KG + 20, desc: '重荷物+20kg（計80kg）' };
+      } else if (pace <= 54) {
+        return { loadKg: 10, totalKg: BASE_BODY_WEIGHT_KG + 10, desc: '水10L+10kg（計70kg）' };
+      } else if (pace <= 68) {
+        return { loadKg: 3, totalKg: BASE_BODY_WEIGHT_KG + 3, desc: '非常袋+3kg（計63kg）' };
+      }
+      return { loadKg: 0, totalKg: BASE_BODY_WEIGHT_KG, desc: '荷物なし（体重60kg）' };
+    }
+
+    // 道路勾配 g = dElev / distMeters を考慮した片道歩行消費エネルギー (kcal)
+    // Minetti et al. (2002) の勾配別歩行代謝コスト多項式 + 基礎姿勢維持代謝 + Pandolf荷物補正
+    function computeDirectedEnergyKcal(distMeters, elevDiffMeters, paceMetersPerMin, loadKg) {
+      if (distMeters <= 0.001) return 0;
+      const g = Math.max(-0.25, Math.min(0.25, elevDiffMeters / distMeters));
+      const g2 = g * g;
+      const g3 = g2 * g;
+      const g4 = g3 * g;
+      const g5 = g4 * g;
+      // Minetti (2002) J/(kg*m)
+      const cWalk = Math.max(0.6, 280.5 * g5 - 58.7 * g4 - 76.8 * g3 + 51.9 * g2 + 19.6 * g + 2.5);
+      const speedMs = Math.max(0.3, paceMetersPerMin / 60);
+      const timeSec = distMeters / speedMs;
+      const totalMassKg = BASE_BODY_WEIGHT_KG + loadKg;
+      const loadPenalty = 1 + 0.35 * (loadKg / BASE_BODY_WEIGHT_KG);
+      const joules = totalMassKg * (cWalk * distMeters + 1.2 * timeSec) * loadPenalty;
+      return joules / 4184;
+    }
+
+    // 区間 (fromElev -> toElev, 長さ distMeters) の実効消費エネルギー (kcal)
+    function computeSegmentEnergyKcal(distMeters, fromElev, toElev) {
+      const { loadKg } = getLoadInfoForPace(walkingPace);
+      const dElev = toElev - fromElev;
+      if (directionMode === 'roundtrip') {
+        // 往復モード：行きは軽装(荷物0kg・80m/分)で向かい、帰りは逆勾配(-dElev)を荷物を持って帰還
+        const goKcal = computeDirectedEnergyKcal(distMeters, dElev, 80, 0);
+        const retKcal = computeDirectedEnergyKcal(distMeters, -dElev, walkingPace, loadKg);
+        return goKcal + retKcal;
+      }
+      return computeDirectedEnergyKcal(distMeters, dElev, walkingPace, loadKg);
+    }
+
+    function getMaxEnergyKcal() {
+      return Math.round(maxDistance / 10); // 50, 100, 150, 200, 300 kcal
+    }
+
     function formatDistShort(meters) {
       if (meters >= 1000) {
         const km = meters / 1000;
@@ -1067,20 +1140,60 @@
       return `${Math.round(meters)}m`;
     }
 
-    function formatMinutes(meters) {
-      const mins = Math.round(meters / walkingPace);
+    function formatMinutesForOneWayDist(oneWayMeters) {
+      if (directionMode === 'roundtrip') {
+        const mins = Math.round(oneWayMeters / 80 + oneWayMeters / walkingPace);
+        return `往復${mins}分`;
+      }
+      const mins = Math.round(oneWayMeters / walkingPace);
       return `${mins}分`;
     }
 
-    function formatBadgeLabelText(dist) {
-      if (labelContentMode === 'both') {
-        return `${formatDistShort(dist)}・${formatMinutes(dist)}`;
-      } else if (labelContentMode === 'dist') {
-        return formatDistShort(dist);
-      } else if (labelContentMode === 'time') {
-        return formatMinutes(dist);
+    function formatElevDiff(dElev) {
+      const r = Math.round(dElev);
+      if (r > 0) return `+${r}m`;
+      if (r < 0) return `${r}m`;
+      return `±0m`;
+    }
+
+    // stepIdx (1..60) に対するバッジ表示文字列を生成
+    function formatBadgeLabelText(stepIdx) {
+      if (labelContentMode === 'none') return '';
+      const st = stepStats[stepIdx];
+
+      if (scaleMetric === 'distance') {
+        const dist = stepIdx * 50; // 50m .. 3000m
+        const distStr = formatDistShort(dist);
+        const timeStr = formatMinutesForOneWayDist(dist);
+        const avgKcal = st && st.count > 0
+          ? Math.round(st.sumKcal / st.count)
+          : Math.round(computeSegmentEnergyKcal(dist, 0, 0));
+        const avgDElev = st && st.count > 0 ? (st.sumDElev / st.count) : 0;
+
+        if (labelContentMode === 'both') return `${distStr}・${timeStr}`;
+        if (labelContentMode === 'kcal') return `${distStr}・${avgKcal}kcal`;
+        if (labelContentMode === 'elev') return `${distStr}・⛰️${formatElevDiff(avgDElev)}`;
+        if (labelContentMode === 'dist') return distStr;
+        if (labelContentMode === 'time') return timeStr;
+        return `${distStr}・${timeStr}`;
+      } else {
+        const kcal = stepIdx * 5; // 5kcal .. 300kcal
+        const kcalStr = `${kcal}kcal`;
+        const flat1mKcal = Math.max(0.01, computeSegmentEnergyKcal(1, 0, 0));
+        const avgDist = st && st.count > 0
+          ? Math.round(st.sumDist / st.count)
+          : Math.round(kcal / flat1mKcal);
+        const avgDElev = st && st.count > 0 ? (st.sumDElev / st.count) : 0;
+        const timeStr = formatMinutesForOneWayDist(avgDist);
+        const distStr = formatDistShort(avgDist);
+
+        if (labelContentMode === 'both') return `${kcalStr}・${timeStr}`;
+        if (labelContentMode === 'kcal') return `${kcalStr}・約${distStr}`;
+        if (labelContentMode === 'elev') return `${kcalStr}・⛰️${formatElevDiff(avgDElev)}`;
+        if (labelContentMode === 'dist') return kcalStr;
+        if (labelContentMode === 'time') return timeStr;
+        return `${kcalStr}・${timeStr}`;
       }
-      return '';
     }
 
     // 点Pから線分ABへの最近傍投影
@@ -1103,7 +1216,7 @@
     }
 
     // =========================================================================
-    // 4. 道路グラフ構築・空間インデックス検索・Dijkstra計算
+    // 4. 道路グラフ構築・空間インデックス検索・勾配対応Dijkstra計算
     // =========================================================================
     function buildRoadGraph(data) {
       roadNodes = data.nodes;
@@ -1118,10 +1231,12 @@
         const v = rawEdges[i][1];
         const p1 = roadNodes[u];
         const p2 = roadNodes[v];
+        const uElev = p1[2] !== undefined ? p1[2] : 75.0;
+        const vElev = p2[2] !== undefined ? p2[2] : 75.0;
         const len = haversineMeters(p1[0], p1[1], p2[0], p2[1]);
-        roadEdges[i] = { u, v, len };
-        roadAdj[u].push({ to: v, len, edgeIdx: i });
-        roadAdj[v].push({ to: u, len, edgeIdx: i });
+        roadEdges[i] = { u, v, len, uElev, vElev };
+        roadAdj[u].push({ to: v, len, edgeIdx: i, fromElev: uElev, toElev: vElev });
+        roadAdj[v].push({ to: u, len, edgeIdx: i, fromElev: vElev, toElev: uElev });
 
         const minGx = Math.floor(Math.min(p1[0], p2[0]) * GRID_SCALE);
         const maxGx = Math.floor(Math.max(p1[0], p2[0]) * GRID_SCALE);
@@ -1169,7 +1284,9 @@
       }
 
       if (bestEdgeIdx === -1) return null;
-      return { edgeIdx: bestEdgeIdx, ...bestProj };
+      const e = roadEdges[bestEdgeIdx];
+      const elev = e.uElev + bestProj.t * (e.vElev - e.uElev);
+      return { edgeIdx: bestEdgeIdx, elev, ...bestProj };
     }
 
     class MinHeap {
@@ -1222,45 +1339,83 @@
     }
 
     function computeShortestPaths(startLon, startLat) {
+      if (!roadNodes || roadNodes.length === 0) return;
       const nearest = findNearestEdge(startLon, startLat);
       if (!nearest) return;
       snapInfo = nearest;
 
       const n = roadNodes.length;
       nodeDist = new Float64Array(n);
+      nodeEnergy = new Float64Array(n);
+      nodeAscent = new Float32Array(n);
+      nodeDescent = new Float32Array(n);
       nodeDist.fill(Infinity);
+      nodeEnergy.fill(Infinity);
       nodeParent = new Int32Array(n);
       nodeParent.fill(-1);
 
       const e = roadEdges[nearest.edgeIdx];
+      const startElev = nearest.elev;
       const dToU = nearest.t * e.len;
       const dToV = (1 - nearest.t) * e.len;
+      const eToU = computeSegmentEnergyKcal(dToU, startElev, e.uElev);
+      const eToV = computeSegmentEnergyKcal(dToV, startElev, e.vElev);
+
+      const useEnergyMetric = (scaleMetric === 'energy');
+      const nodeCost = useEnergyMetric ? nodeEnergy : nodeDist;
+      const maxLimit = useEnergyMetric ? (getMaxEnergyKcal() + 35) : (maxDistance + 250);
 
       const heap = new MinHeap();
-      nodeDist[e.u] = dToU;
-      heap.push(e.u, dToU);
 
-      if (dToV < nodeDist[e.v]) {
+      nodeDist[e.u] = dToU;
+      nodeEnergy[e.u] = eToU;
+      nodeAscent[e.u] = Math.max(0, e.uElev - startElev);
+      nodeDescent[e.u] = Math.max(0, startElev - e.uElev);
+      heap.push(e.u, useEnergyMetric ? eToU : dToU);
+
+      const initCostV = useEnergyMetric ? eToV : dToV;
+      if (initCostV < nodeCost[e.v]) {
         nodeDist[e.v] = dToV;
-        heap.push(e.v, dToV);
+        nodeEnergy[e.v] = eToV;
+        nodeAscent[e.v] = Math.max(0, e.vElev - startElev);
+        nodeDescent[e.v] = Math.max(0, startElev - e.vElev);
+        heap.push(e.v, initCostV);
       }
 
-      const limit = maxDistance;
-
       while (heap.size > 0) {
-        const { node: u, dist: d } = heap.pop();
-        if (d > nodeDist[u] + 1e-5) continue;
-        if (d > limit) continue;
+        const { node: u, dist: c } = heap.pop();
+        if (c > nodeCost[u] + 1e-5) continue;
+        if (c > maxLimit) continue;
 
         const neighbors = roadAdj[u];
         for (let i = 0; i < neighbors.length; i++) {
           const nb = neighbors[i];
-          const nd = d + nb.len;
-          if (nd < nodeDist[nb.to] && nd <= limit + 250) {
+          const stepDist = nb.len;
+          const stepEnergy = computeSegmentEnergyKcal(stepDist, nb.fromElev, nb.toElev);
+          const nd = nodeDist[u] + stepDist;
+          const ne = nodeEnergy[u] + stepEnergy;
+          const nextCost = useEnergyMetric ? ne : nd;
+
+          if (nextCost < nodeCost[nb.to] && nextCost <= maxLimit) {
             nodeDist[nb.to] = nd;
+            nodeEnergy[nb.to] = ne;
+            const dh = nb.toElev - nb.fromElev;
+            nodeAscent[nb.to] = nodeAscent[u] + (dh > 0 ? dh : 0);
+            nodeDescent[nb.to] = nodeDescent[u] + (dh < 0 ? -dh : 0);
             nodeParent[nb.to] = u;
-            heap.push(nb.to, nd);
+            heap.push(nb.to, nextCost);
           }
+        }
+      }
+
+      // スタートマーカーの標高表示も更新
+      if (startMarker) {
+        const badge = startMarker.getElement().querySelector('.start-pin-badge');
+        if (badge) {
+          const elevStr = `標高${startElev.toFixed(1)}m`;
+          badge.textContent = startPointName
+            ? `🏠 ${startPointName} (${elevStr})`
+            : `🏠 スタート地点 (${elevStr})`;
         }
       }
     }
@@ -1268,35 +1423,36 @@
     // =========================================================================
     // 5. 道路上のグラデーション線分 ＆ メジャー目盛り・ラベル生成
     // =========================================================================
-    function getEffectiveLabelInterval() {
+    // 1 stepIdx = 距離モード時50m / エネルギーモード時5kcal (全60ステップ)
+    function getEffectiveStepMod() {
       if (tickIntervalSetting !== 'auto') {
-        return Number(tickIntervalSetting);
+        return Math.max(1, Math.round(Number(tickIntervalSetting) / 50)); // 1, 2, 5, 10
       }
       const z = map.getZoom();
-      if (z >= 17.3) return 50;
-      if (z >= 15.8) return 100;
-      if (z >= 14.5) return 250;
-      return 500;
+      if (z >= 17.3) return 1;  // 50m / 5kcal
+      if (z >= 15.8) return 2;  // 100m / 10kcal
+      if (z >= 14.5) return 5;  // 250m / 25kcal
+      return 10;                // 500m / 50kcal
     }
 
     function updateBadgeImages() {
       const dpr = Math.min(window.devicePixelRatio || 2, 2);
       // MapLibreのupdateImageは前回と同一のwidth/heightが必須なため、
       // 文字数やスマホ固有のプロポーショナルフォント幅が変わっても常に同一サイズになる固定キャンバス内に中央描画する
-      const fixedLogicalW = 104;
+      const fixedLogicalW = 116;
       const fixedLogicalH = 24;
       const canvasW = Math.round(fixedLogicalW * dpr);
       const canvasH = Math.round(fixedLogicalH * dpr);
+      const maxSteps = Math.round(maxDistance / 50); // 10..60
 
-      const step = 50;
-      for (let dist = step; dist <= 3000; dist += step) {
-        const badgeId = `badge-${dist}`;
-        const ratio = Math.min(1, dist / maxDistance);
+      for (let stepIdx = 1; stepIdx <= 60; stepIdx++) {
+        const badgeId = `badge-${stepIdx}`;
+        const ratio = Math.min(1, stepIdx / maxSteps);
         const accentColor = getColorAtRatio(ratio);
-        const isMajor = (dist % 500 === 0);
-        const isMid = (dist % 100 === 0);
+        const isMajor = (stepIdx % 10 === 0); // 500m / 50kcal
+        const isMid = (stepIdx % 2 === 0);    // 100m / 10kcal
 
-        const text = formatBadgeLabelText(dist);
+        const text = formatBadgeLabelText(stepIdx);
 
         const fontSize = isMajor ? 12 : (isMid ? 11 : 10);
         const padX = isMajor ? 7 : 6;
@@ -1357,36 +1513,62 @@
       }
     }
 
-    function processDirectedSubsegment(ax, ay, bx, by, dA, dB, segFeatures, tickFeatures, labelPointsBucket) {
-      if (dA >= maxDistance) return;
-      const segLen = dB - dA;
-      if (segLen <= 0.05) return;
+    function processDirectedSubsegment(
+      ax, ay, bx, by,
+      dA, dB, eA, eB, elevA, elevB,
+      segFeatures, tickFeatures, labelPointsBucket
+    ) {
+      const useEnergy = (scaleMetric === 'energy');
+      const maxVal = useEnergy ? getMaxEnergyKcal() : maxDistance;
+      const valA = useEnergy ? eA : dA;
+      const valB = useEnergy ? eB : dB;
 
-      let endLon = bx;
-      let endLat = by;
-      let endDist = dB;
-      if (dB > maxDistance) {
-        const clipFrac = (maxDistance - dA) / segLen;
-        endLon = ax + clipFrac * (bx - ax);
-        endLat = ay + clipFrac * (by - ay);
-        endDist = maxDistance;
+      if (valA >= maxVal) return;
+      const valSpan = valB - valA;
+      if (valSpan <= 1e-4) return;
+
+      let clipFrac = 1.0;
+      if (valB > maxVal) {
+        clipFrac = Math.max(0, Math.min(1, (maxVal - valA) / valSpan));
       }
 
-      const clippedLen = endDist - dA;
-      const numPieces = Math.max(1, Math.ceil(clippedLen / 30));
+      const endLon = ax + clipFrac * (bx - ax);
+      const endLat = ay + clipFrac * (by - ay);
+      const endVal = valA + clipFrac * valSpan;
+      const endDist = dA + clipFrac * (dB - dA);
+      const endEnergy = eA + clipFrac * (eB - eA);
+      const endElev = elevA + clipFrac * (elevB - elevA);
+
+      const clippedDistLen = Math.max(0.1, endDist - dA);
+      const clippedValLen = endVal - valA;
+      if (clippedValLen <= 1e-4) return;
+
+      const startElev = snapInfo ? snapInfo.elev : elevA;
+      const segGradePct = ((elevB - elevA) / Math.max(1, dB - dA)) * 100;
+
+      const numPieces = Math.max(1, Math.ceil(clippedDistLen / 30));
       for (let p = 0; p < numPieces; p++) {
         const f0 = p / numPieces;
         const f1 = (p + 1) / numPieces;
+        const fMid = (f0 + f1) * 0.5;
         const x0 = ax + f0 * (endLon - ax);
         const y0 = ay + f0 * (endLat - ay);
         const x1 = ax + f1 * (endLon - ax);
         const y1 = ay + f1 * (endLat - ay);
-        const dMid = dA + ((f0 + f1) * 0.5) * clippedLen;
+        const valMid = valA + fMid * clippedValLen;
+        const distMid = dA + fMid * (endDist - dA);
+        const energyMid = eA + fMid * (endEnergy - eA);
+        const elevMid = elevA + fMid * (endElev - elevA);
+
         segFeatures.push({
           type: 'Feature',
           properties: {
-            dist: Math.round(dMid),
-            ratio: Math.min(1, dMid / maxDistance)
+            dist: Math.round(distMid),
+            kcal: Math.round(energyMid * 10) / 10,
+            elev: Math.round(elevMid * 10) / 10,
+            dElev: Math.round((elevMid - startElev) * 10) / 10,
+            gradePct: Math.round(segGradePct * 10) / 10,
+            ratio: Math.min(1, valMid / maxVal)
           },
           geometry: {
             type: 'LineString',
@@ -1403,31 +1585,35 @@
       const nxLon = (-dyMeters / normLen) / (111320 * cosLat);
       const nyLat = (dxMeters / normLen) / 110540;
 
-      const firstTick = Math.ceil((dA + 0.01) / 10) * 10;
-      for (let tickDist = firstTick; tickDist <= endDist; tickDist += 10) {
-        if (tickDist <= 0 || tickDist > maxDistance) continue;
-        const frac = (tickDist - dA) / clippedLen;
+      // 距離モード時は10m単位、エネルギーモード時は1kcal単位で目盛りを生成
+      const minorUnit = useEnergy ? 1 : 10;
+      const firstTick = Math.ceil((valA + 1e-4) / minorUnit) * minorUnit;
+
+      for (let tickVal = firstTick; tickVal <= endVal; tickVal += minorUnit) {
+        if (tickVal <= 0 || tickVal > maxVal) continue;
+        const frac = (tickVal - valA) / clippedValLen;
         const tx = ax + frac * (endLon - ax);
         const ty = ay + frac * (endLat - ay);
 
-        let tickLevel = 1; // 10m小目盛り
+        const tickUnits = Math.round(tickVal / minorUnit); // 1, 2, 3... (1unit = 10m or 1kcal)
+        let tickLevel = 1; // 10m / 1kcal 小目盛り
         let halfWidthMeters = 3.2;
-        if (tickDist % 500 === 0) {
-          tickLevel = 4; // 500m特大目盛り
+        if (tickUnits % 50 === 0) {
+          tickLevel = 4; // 500m / 50kcal 特大目盛り
           halfWidthMeters = 10.5;
-        } else if (tickDist % 100 === 0) {
-          tickLevel = 3; // 100m大目盛り
+        } else if (tickUnits % 10 === 0) {
+          tickLevel = 3; // 100m / 10kcal 大目盛り
           halfWidthMeters = 7.5;
-        } else if (tickDist % 50 === 0) {
-          tickLevel = 2; // 50m中目盛り
+        } else if (tickUnits % 5 === 0) {
+          tickLevel = 2; // 50m / 5kcal 中目盛り
           halfWidthMeters = 5.2;
         }
 
-        const ratio = Math.min(1, tickDist / maxDistance);
+        const ratio = Math.min(1, tickVal / maxVal);
         tickFeatures.push({
           type: 'Feature',
           properties: {
-            dist: tickDist,
+            val: tickVal,
             level: tickLevel,
             ratio: ratio
           },
@@ -1440,19 +1626,28 @@
           }
         });
 
-        if (tickDist % 50 === 0) {
-          labelPointsBucket.push({
-            lon: tx,
-            lat: ty,
-            dist: tickDist,
-            ratio: ratio
-          });
+        if (tickUnits % 5 === 0) {
+          const stepIdx = Math.round(tickUnits / 5); // 1..60 (50m or 5kcal)
+          if (stepIdx >= 1 && stepIdx <= 60) {
+            const ptDist = dA + frac * (endDist - dA);
+            const ptEnergy = eA + frac * (endEnergy - eA);
+            const ptElev = elevA + frac * (endElev - elevA);
+            labelPointsBucket.push({
+              lon: tx,
+              lat: ty,
+              stepIdx: stepIdx,
+              dist: ptDist,
+              kcal: ptEnergy,
+              dElev: ptElev - startElev,
+              ratio: ratio
+            });
+          }
         }
       }
     }
 
     function renderRoadScaleLayers() {
-      if (!snapInfo || !nodeDist || !map.getSource('road-scale-segments')) return;
+      if (!snapInfo || !nodeDist || !nodeEnergy || !map.getSource('road-scale-segments')) return;
 
       const segFeatures = [];
       const tickFeatures = [];
@@ -1462,75 +1657,154 @@
       const startEdge = roadEdges[startEdgeIdx];
       const u0 = roadNodes[startEdge.u];
       const v0 = roadNodes[startEdge.v];
+      const startElev = snapInfo.elev;
       const dToU = snapInfo.t * startEdge.len;
       const dToV = (1 - snapInfo.t) * startEdge.len;
+      const eToU = computeSegmentEnergyKcal(dToU, startElev, startEdge.uElev);
+      const eToV = computeSegmentEnergyKcal(dToV, startElev, startEdge.vElev);
 
       if (dToU > 0.05) {
         processDirectedSubsegment(
           snapInfo.lon, snapInfo.lat, u0[0], u0[1],
-          0, dToU, segFeatures, tickFeatures, labelCandidates
+          0, dToU, 0, eToU, startElev, startEdge.uElev,
+          segFeatures, tickFeatures, labelCandidates
         );
       }
       if (dToV > 0.05) {
         processDirectedSubsegment(
           snapInfo.lon, snapInfo.lat, v0[0], v0[1],
-          0, dToV, segFeatures, tickFeatures, labelCandidates
+          0, dToV, 0, eToV, startElev, startEdge.vElev,
+          segFeatures, tickFeatures, labelCandidates
         );
       }
+
+      const useEnergy = (scaleMetric === 'energy');
+      const maxVal = useEnergy ? getMaxEnergyKcal() : maxDistance;
 
       for (let i = 0; i < roadEdges.length; i++) {
         if (i === startEdgeIdx) continue;
         const e = roadEdges[i];
         const du = nodeDist[e.u];
         const dv = nodeDist[e.v];
-        if (du >= maxDistance && dv >= maxDistance) continue;
-        if (du === Infinity && dv === Infinity) continue;
+        const eu = nodeEnergy[e.u];
+        const ev = nodeEnergy[e.v];
+        const valU = useEnergy ? eu : du;
+        const valV = useEnergy ? ev : dv;
+
+        if (valU >= maxVal && valV >= maxVal) continue;
+        if (valU === Infinity && valV === Infinity) continue;
 
         const pU = roadNodes[e.u];
         const pV = roadNodes[e.v];
 
-        if (Math.abs(dv - du) >= e.len - 0.1) {
-          if (du <= dv) {
-            processDirectedSubsegment(pU[0], pU[1], pV[0], pV[1], du, du + e.len, segFeatures, tickFeatures, labelCandidates);
+        if (valU <= valV) {
+          const edgeE = computeSegmentEnergyKcal(e.len, e.uElev, e.vElev);
+          const edgeCost = useEnergy ? edgeE : e.len;
+          if (valV - valU >= edgeCost - 0.05 || valV === Infinity) {
+            processDirectedSubsegment(
+              pU[0], pU[1], pV[0], pV[1],
+              du, du + e.len, eu, eu + edgeE, e.uElev, e.vElev,
+              segFeatures, tickFeatures, labelCandidates
+            );
           } else {
-            processDirectedSubsegment(pV[0], pV[1], pU[0], pU[1], dv, dv + e.len, segFeatures, tickFeatures, labelCandidates);
+            const fracM = Math.max(0, Math.min(1, (valV - valU + edgeCost) / (2 * edgeCost || 1)));
+            const mx = pU[0] + fracM * (pV[0] - pU[0]);
+            const my = pU[1] + fracM * (pV[1] - pU[1]);
+            const mElev = e.uElev + fracM * (e.vElev - e.uElev);
+            const dFromU = fracM * e.len;
+            const dFromV = (1 - fracM) * e.len;
+            const eFromU = computeSegmentEnergyKcal(dFromU, e.uElev, mElev);
+            const eFromV = computeSegmentEnergyKcal(dFromV, e.vElev, mElev);
+            if (dFromU > 0.05) {
+              processDirectedSubsegment(
+                pU[0], pU[1], mx, my,
+                du, du + dFromU, eu, eu + eFromU, e.uElev, mElev,
+                segFeatures, tickFeatures, labelCandidates
+              );
+            }
+            if (dFromV > 0.05) {
+              processDirectedSubsegment(
+                pV[0], pV[1], mx, my,
+                dv, dv + dFromV, ev, ev + eFromV, e.vElev, mElev,
+                segFeatures, tickFeatures, labelCandidates
+              );
+            }
           }
         } else {
-          const xFromU = Math.max(0, Math.min(e.len, (dv - du + e.len) * 0.5));
-          const fracM = xFromU / (e.len || 1);
-          const mx = pU[0] + fracM * (pV[0] - pU[0]);
-          const my = pU[1] + fracM * (pV[1] - pU[1]);
-          const dMid = du + xFromU;
-          if (xFromU > 0.05) {
-            processDirectedSubsegment(pU[0], pU[1], mx, my, du, dMid, segFeatures, tickFeatures, labelCandidates);
-          }
-          if (e.len - xFromU > 0.05) {
-            processDirectedSubsegment(pV[0], pV[1], mx, my, dv, dMid, segFeatures, tickFeatures, labelCandidates);
+          const edgeE = computeSegmentEnergyKcal(e.len, e.vElev, e.uElev);
+          const edgeCost = useEnergy ? edgeE : e.len;
+          if (valU - valV >= edgeCost - 0.05 || valU === Infinity) {
+            processDirectedSubsegment(
+              pV[0], pV[1], pU[0], pU[1],
+              dv, dv + e.len, ev, ev + edgeE, e.vElev, e.uElev,
+              segFeatures, tickFeatures, labelCandidates
+            );
+          } else {
+            const fracM = Math.max(0, Math.min(1, (valU - valV + edgeCost) / (2 * edgeCost || 1)));
+            const mx = pV[0] + fracM * (pU[0] - pV[0]);
+            const my = pV[1] + fracM * (pU[1] - pV[1]);
+            const mElev = e.vElev + fracM * (e.uElev - e.vElev);
+            const dFromV = fracM * e.len;
+            const dFromU = (1 - fracM) * e.len;
+            const eFromV = computeSegmentEnergyKcal(dFromV, e.vElev, mElev);
+            const eFromU = computeSegmentEnergyKcal(dFromU, e.uElev, mElev);
+            if (dFromV > 0.05) {
+              processDirectedSubsegment(
+                pV[0], pV[1], mx, my,
+                dv, dv + dFromV, ev, ev + eFromV, e.vElev, mElev,
+                segFeatures, tickFeatures, labelCandidates
+              );
+            }
+            if (dFromU > 0.05) {
+              processDirectedSubsegment(
+                pU[0], pU[1], mx, my,
+                du, du + dFromU, eu, eu + eFromU, e.uElev, mElev,
+                segFeatures, tickFeatures, labelCandidates
+              );
+            }
           }
         }
       }
 
+      // 各ステップ (1..60) の平均距離・平均kcal・平均標高差を集計してバッジ表示に反映
+      stepStats = Array.from({ length: 61 }, () => ({ count: 0, sumDist: 0, sumKcal: 0, sumDElev: 0 }));
+      for (let i = 0; i < labelCandidates.length; i++) {
+        const c = labelCandidates[i];
+        const st = stepStats[c.stepIdx];
+        if (st) {
+          st.count++;
+          st.sumDist += c.dist;
+          st.sumKcal += c.kcal;
+          st.sumDElev += c.dElev;
+        }
+      }
+      updateBadgeImages();
+      updateLegendUI();
+
       const labelFeatures = [];
       const seenGrid = new Set();
       labelCandidates.sort((a, b) => {
-        const prioA = (a.dist % 1000 === 0) ? 1 : (a.dist % 500 === 0) ? 2 : (a.dist % 250 === 0) ? 3 : (a.dist % 100 === 0) ? 4 : 5;
-        const prioB = (b.dist % 1000 === 0) ? 1 : (b.dist % 500 === 0) ? 2 : (b.dist % 250 === 0) ? 3 : (b.dist % 100 === 0) ? 4 : 5;
+        const prioA = (a.stepIdx % 20 === 0) ? 1 : (a.stepIdx % 10 === 0) ? 2 : (a.stepIdx % 5 === 0) ? 3 : (a.stepIdx % 2 === 0) ? 4 : 5;
+        const prioB = (b.stepIdx % 20 === 0) ? 1 : (b.stepIdx % 10 === 0) ? 2 : (b.stepIdx % 5 === 0) ? 3 : (b.stepIdx % 2 === 0) ? 4 : 5;
         return prioA - prioB;
       });
 
       for (let i = 0; i < labelCandidates.length; i++) {
         const c = labelCandidates[i];
-        const cellKey = `${c.dist}_${Math.round(c.lon * 2200)}_${Math.round(c.lat * 2200)}`;
+        const cellKey = `${c.stepIdx}_${Math.round(c.lon * 2200)}_${Math.round(c.lat * 2200)}`;
         if (seenGrid.has(cellKey)) continue;
         seenGrid.add(cellKey);
 
-        const priority = (c.dist % 1000 === 0) ? 1 : (c.dist % 500 === 0) ? 2 : (c.dist % 250 === 0) ? 3 : (c.dist % 100 === 0) ? 4 : 5;
+        const priority = (c.stepIdx % 20 === 0) ? 1 : (c.stepIdx % 10 === 0) ? 2 : (c.stepIdx % 5 === 0) ? 3 : (c.stepIdx % 2 === 0) ? 4 : 5;
         labelFeatures.push({
           type: 'Feature',
           properties: {
-            dist: c.dist,
+            stepIdx: c.stepIdx,
+            dist: Math.round(c.dist),
+            kcal: Math.round(c.kcal),
+            dElev: Math.round(c.dElev * 10) / 10,
             ratio: c.ratio,
-            badgeId: `badge-${c.dist}`,
+            badgeId: `badge-${c.stepIdx}`,
             priority: priority
           },
           geometry: {
@@ -1576,10 +1850,10 @@
     }
 
     function getMinTickLevelForZoom(z) {
-      if (z >= 17.2) return 1; // 10m刻みまで表示
-      if (z >= 15.8) return 2; // 50m刻みまで表示
-      if (z >= 14.3) return 3; // 100m刻みまで表示
-      return 4;                // 500m刻みのみ表示
+      if (z >= 17.2) return 1; // 10m / 1kcal 刻みまで表示
+      if (z >= 15.8) return 2; // 50m / 5kcal 刻みまで表示
+      if (z >= 14.3) return 3; // 100m / 10kcal 刻みまで表示
+      return 4;                // 500m / 50kcal 刻みのみ表示
     }
 
     function applyTickZoomFilter() {
@@ -1609,56 +1883,85 @@
       }
 
       if (!map.getLayer('road-scale-labels-layer')) return;
+      const stepMod = getEffectiveStepMod(); // 1, 2, 5, 10
       if (!showScaleOverlay || labelContentMode === 'none') {
         map.setLayoutProperty('road-scale-labels-layer', 'visibility', 'none');
       } else {
         map.setLayoutProperty('road-scale-labels-layer', 'visibility', 'visible');
-        const interval = getEffectiveLabelInterval();
-        map.setFilter('road-scale-labels-layer', ['==', ['%', ['get', 'dist'], interval], 0]);
+        map.setFilter('road-scale-labels-layer', ['==', ['%', ['get', 'stepIdx'], stepMod], 0]);
       }
 
-      const interval = getEffectiveLabelInterval();
       const tickLabelEl = document.getElementById('tickIntervalLabel');
+      const unitStr = scaleMetric === 'energy' ? `${stepMod * 5}kcal` : `${stepMod * 50}m`;
       if (tickIntervalSetting === 'auto') {
-        tickLabelEl.textContent = `自動 (${interval}m)`;
+        tickLabelEl.textContent = `自動 (${unitStr})`;
       } else {
-        tickLabelEl.textContent = `${interval}m 固定`;
+        tickLabelEl.textContent = `${unitStr} 固定`;
       }
     }
 
     // =========================================================================
-    // 6. 特定地点までの最短ルート計測（メジャー強調表示）
+    // 6. 特定地点までの最短ルート計測（距離・時間・勾配消費kcal・標高差表示）
     // =========================================================================
+    function evaluatePointOnRoad(snap) {
+      if (!snap || !nodeDist || !nodeEnergy || !snapInfo) return null;
+      const te = roadEdges[snap.edgeIdx];
+      const dTailU = snap.t * te.len;
+      const dTailV = (1 - snap.t) * te.len;
+      const eTailU = computeSegmentEnergyKcal(dTailU, te.uElev, snap.elev);
+      const eTailV = computeSegmentEnergyKcal(dTailV, te.vElev, snap.elev);
+
+      const useEnergy = (scaleMetric === 'energy');
+      const costViaU = (useEnergy ? nodeEnergy[te.u] : nodeDist[te.u]) + (useEnergy ? eTailU : dTailU);
+      const costViaV = (useEnergy ? nodeEnergy[te.v] : nodeDist[te.v]) + (useEnergy ? eTailV : dTailV);
+
+      const viaU = costViaU <= costViaV;
+      const bestDist = viaU ? (nodeDist[te.u] + dTailU) : (nodeDist[te.v] + dTailV);
+      const bestEnergy = viaU ? (nodeEnergy[te.u] + eTailU) : (nodeEnergy[te.v] + eTailV);
+      if (!Number.isFinite(bestDist) || !Number.isFinite(bestEnergy)) return null;
+
+      const dhTail = viaU ? (snap.elev - te.uElev) : (snap.elev - te.vElev);
+      const totalAscent = (viaU ? nodeAscent[te.u] : nodeAscent[te.v]) + (dhTail > 0 ? dhTail : 0);
+      const totalDescent = (viaU ? nodeDescent[te.u] : nodeDescent[te.v]) + (dhTail < 0 ? -dhTail : 0);
+      const netElevDiff = snap.elev - snapInfo.elev;
+
+      return {
+        viaNode: viaU ? te.u : te.v,
+        dist: bestDist,
+        kcal: bestEnergy,
+        elev: snap.elev,
+        netElevDiff,
+        totalAscent,
+        totalDescent
+      };
+    }
+
     function updateTargetMeasureRoute() {
       if (!targetPoint || !snapInfo || !nodeDist || !map.getSource('target-route')) return;
 
       const targetSnap = findNearestEdge(targetPoint[0], targetPoint[1]);
       if (!targetSnap) return;
 
-      const te = roadEdges[targetSnap.edgeIdx];
-      const dViaU = nodeDist[te.u] + targetSnap.t * te.len;
-      const dViaV = nodeDist[te.v] + (1 - targetSnap.t) * te.len;
-      const bestDist = Math.min(dViaU, dViaV);
-
+      const evalRes = evaluatePointOnRoad(targetSnap);
       const banner = document.getElementById('measureBanner');
       const mainText = document.getElementById('measureMainText');
       const subText = document.getElementById('measureSubText');
 
-      if (!Number.isFinite(bestDist)) {
+      if (!evalRes) {
         targetRouteCoords = null;
         targetRouteDist = null;
         banner.classList.add('visible');
         mainText.textContent = '⚠️ 到達ルートが見つかりません';
-        subText.textContent = '徒歩ネットワーク外の地点です';
+        subText.textContent = '設定範囲外または徒歩ネットワーク外の地点です';
         map.getSource('target-route').setData({ type: 'FeatureCollection', features: [] });
         return;
       }
 
       const routeCoords = [[targetSnap.lon, targetSnap.lat]];
-      let curr = (dViaU <= dViaV) ? te.u : te.v;
+      let curr = evalRes.viaNode;
       let safety = 0;
       while (curr !== -1 && safety < 10000) {
-        routeCoords.push(roadNodes[curr]);
+        routeCoords.push([roadNodes[curr][0], roadNodes[curr][1]]);
         curr = nodeParent[curr];
         safety++;
       }
@@ -1666,7 +1969,7 @@
       routeCoords.reverse();
 
       targetRouteCoords = routeCoords;
-      targetRouteDist = bestDist;
+      targetRouteDist = evalRes.dist;
 
       map.getSource('target-route').setData({
         type: 'FeatureCollection',
@@ -1682,19 +1985,21 @@
         ]
       });
 
-      const roundedDist = Math.round(bestDist);
-      const mins = Math.max(1, Math.round(bestDist / walkingPace));
+      const roundedDist = Math.round(evalRes.dist);
+      const timeLabel = formatMinutesForOneWayDist(evalRes.dist);
+      const roundedKcal = Math.round(evalRes.kcal);
+      const dirLabel = directionMode === 'roundtrip' ? '往復' : '片道';
       banner.classList.add('visible');
-      const titlePrefix = targetPointName ? `🎯 ${targetPointName}: ` : '📏 道のり: ';
-      mainText.textContent = `${titlePrefix}${roundedDist.toLocaleString()} m（約 ${mins} 分）`;
-      subText.textContent = `計算ペース: ${currentPaceLabel}（直線距離: ${Math.round(haversineMeters(startPoint[0], startPoint[1], targetPoint[0], targetPoint[1]))}m）`;
+      const titlePrefix = targetPointName ? `🎯 ${targetPointName}: ` : '📏 ';
+      mainText.textContent = `${titlePrefix}${roundedDist.toLocaleString()}m（${timeLabel}）｜🔥 ${roundedKcal} kcal`;
+      subText.textContent = `⛰️ 標高 ${evalRes.elev.toFixed(1)}m（標高差 ${formatElevDiff(evalRes.netElevDiff)}｜上り+${Math.round(evalRes.totalAscent)}m / 下り-${Math.round(evalRes.totalDescent)}m）[${dirLabel}]`;
 
       if (targetMarker) {
         const badge = targetMarker.getElement().querySelector('.target-pin-badge');
         if (badge) {
           badge.textContent = targetPointName
-            ? `🎯 ${targetPointName} (${roundedDist}m・${mins}分)`
-            : `🎯 ${roundedDist}m (${mins}分)`;
+            ? `🎯 ${targetPointName} (${roundedDist}m・🔥${roundedKcal}kcal)`
+            : `🎯 ${roundedDist}m・${timeLabel} (🔥${roundedKcal}kcal)`;
         }
       }
     }
@@ -1740,7 +2045,7 @@
     }
 
     // =========================================================================
-    // 7. スタートマーカー＆UI更新処理
+    // 7. スタートマーカー＆凡例UI更新処理
     // =========================================================================
     function createOrUpdateStartMarker(coords) {
       if (!startMarker) {
@@ -1761,10 +2066,6 @@
         });
       } else {
         startMarker.setLngLat(coords);
-      }
-      const badge = startMarker.getElement().querySelector('.start-pin-badge');
-      if (badge) {
-        badge.textContent = startPointName ? `🏠 ${startPointName} (0m)` : '🏠 スタート地点 (0m)';
       }
     }
 
@@ -1789,28 +2090,88 @@
 
       const topEl = document.getElementById('legendLabelsTop');
       const bottomEl = document.getElementById('legendLabelsBottom');
+      const captionLeftEl = document.getElementById('legendCaptionLeft');
       const fractions = [0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1];
+      const { totalKg, desc: loadDesc } = getLoadInfoForPace(walkingPace);
+      const dirBadge = directionMode === 'roundtrip' ? '往復' : '片道';
 
-      topEl.innerHTML = fractions.map(f => {
-        const d = Math.round(maxDistance * f);
-        return `<span>${ d === 0 ? '0m' : formatDistShort(d) }</span>`;
-      }).join('');
+      if (scaleMetric === 'distance') {
+        topEl.innerHTML = fractions.map(f => {
+          const d = Math.round(maxDistance * f);
+          return `<span>${ d === 0 ? '0m' : formatDistShort(d) }</span>`;
+        }).join('');
 
-      bottomEl.innerHTML = fractions.map(f => {
-        const d = Math.round(maxDistance * f);
-        const m = Math.round(d / walkingPace);
-        return `<span>${ m }分</span>`;
-      }).join('');
+        bottomEl.innerHTML = fractions.map(f => {
+          const d = Math.round(maxDistance * f);
+          if (labelContentMode === 'kcal') {
+            const k = Math.round(computeSegmentEnergyKcal(d, 0, 0));
+            return `<span>${k}kcal</span>`;
+          }
+          const mins = directionMode === 'roundtrip'
+            ? Math.round(d / 80 + d / walkingPace)
+            : Math.round(d / walkingPace);
+          return `<span>${mins}分</span>`;
+        }).join('');
+
+        captionLeftEl.textContent = labelContentMode === 'kcal'
+          ? `▲距離(${dirBadge}) ／ ▼平地目安kcal（計${totalKg}kg）`
+          : `▲距離 ／ ▼徒歩時間（${dirBadge}・計${totalKg}kg）`;
+        document.getElementById('currentMaxDistBadge').textContent = `・${(maxDistance / 1000).toFixed(1)}km(${dirBadge})`;
+        document.getElementById('maxRangeTitleLabel').textContent = '📏 最大計算距離';
+        document.getElementById('maxDistDetailLabel').textContent = `${maxDistance.toLocaleString()} m（${formatMinutesForOneWayDist(maxDistance)}）`;
+      } else {
+        const maxKcal = getMaxEnergyKcal();
+        const flat1mKcal = Math.max(0.01, computeSegmentEnergyKcal(1, 0, 0));
+        topEl.innerHTML = fractions.map(f => {
+          const k = Math.round(maxKcal * f);
+          return `<span>${ k === 0 ? '0kcal' : `${k}kcal` }</span>`;
+        }).join('');
+
+        bottomEl.innerHTML = fractions.map(f => {
+          const k = maxKcal * f;
+          const eqDist = Math.round(k / flat1mKcal);
+          return `<span>${ eqDist === 0 ? '0m' : `約${formatDistShort(eqDist)}` }</span>`;
+        }).join('');
+
+        captionLeftEl.textContent = `▲消費エネルギー(${dirBadge}) ／ ▼平地換算距離（計${totalKg}kg）`;
+        document.getElementById('currentMaxDistBadge').textContent = `・🔥${maxKcal}kcal(${dirBadge})`;
+        document.getElementById('maxRangeTitleLabel').textContent = '🔥 最大計算エネルギー';
+        const onigiri = (maxKcal / 180).toFixed(1);
+        document.getElementById('maxDistDetailLabel').textContent = `${maxKcal} kcal（おにぎり約${onigiri}個分）`;
+      }
 
       document.getElementById('currentPaceBadge').textContent = currentPaceLabel;
-      document.getElementById('currentMaxDistBadge').textContent = `・${(maxDistance / 1000).toFixed(1)}km`;
-      const kmh = (walkingPace * 60 / 1000).toFixed(1);
-      document.getElementById('paceDetailLabel').textContent = `${walkingPace} m/分（${kmh} km/h）`;
-      document.getElementById('maxDistDetailLabel').textContent = `${maxDistance.toLocaleString()} m（約${Math.round(maxDistance / walkingPace)}分）`;
+      document.getElementById('paceDetailLabel').textContent = `${walkingPace}m/分｜${loadDesc}`;
+
+      // チップ群の単位ラベルも現在のスケール基準に合わせて更新
+      document.querySelectorAll('#maxDistChipGroup .chip').forEach(btn => {
+        const d = Number(btn.dataset.dist);
+        if (scaleMetric === 'energy') {
+          btn.textContent = `${Math.round(d / 10)}kcal`;
+        } else {
+          btn.textContent = d >= 1000 ? `${d / 1000}km` : `${d}m`;
+        }
+      });
+
+      document.querySelectorAll('#tickIntervalChipGroup .chip').forEach(btn => {
+        const iv = btn.dataset.interval;
+        if (iv === 'auto') {
+          btn.textContent = '自動';
+        } else {
+          const num = Number(iv);
+          btn.textContent = scaleMetric === 'energy' ? `${Math.round(num / 10)}kcal` : `${num}m`;
+        }
+      });
+
+      const isEnergy = (scaleMetric === 'energy');
+      document.getElementById('lblChipBoth').textContent = isEnergy ? 'kcal＋時間' : '距離＋時間';
+      document.getElementById('lblChipKcal').textContent = isEnergy ? 'kcal＋距離' : '距離＋kcal';
+      document.getElementById('lblChipElev').textContent = '＋標高差';
+      document.getElementById('lblChipPrimary').textContent = isEnergy ? 'kcalのみ' : '距離のみ';
     }
 
     // =========================================================================
-    // 8. ユーザー設定変更ハンドラ（グラデーションON/OFF含む）
+    // 8. ユーザー設定変更ハンドラ（距離⇔kcal・片道⇔往復・グラデーションON/OFF含む）
     // =========================================================================
     function toggleSettingsDrawer(forceOpen = null) {
       const drawer = document.getElementById('settingsDrawer');
@@ -1833,18 +2194,57 @@
       btnMeasure.classList.toggle('measure-active', mode === 'measure');
     }
 
+    function setScaleMetric(metric) {
+      scaleMetric = (metric === 'energy') ? 'energy' : 'distance';
+      const topMetricBtn = document.getElementById('btnToggleMetric');
+      if (topMetricBtn) {
+        topMetricBtn.textContent = scaleMetric === 'energy' ? '🔥 kcal' : '📏 距離';
+        topMetricBtn.classList.toggle('active', scaleMetric === 'energy');
+      }
+
+      document.querySelectorAll('#scaleMetricChipGroup .chip').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.metric === scaleMetric);
+      });
+
+      const dirText = directionMode === 'roundtrip' ? '往復' : '片道';
+      document.getElementById('scaleMetricStatusLabel').textContent =
+        scaleMetric === 'energy' ? `消費kcal・${dirText}` : `実距離(m)・${dirText}`;
+
+      computeShortestPaths(startPoint[0], startPoint[1]);
+      renderRoadScaleLayers();
+      if (targetPoint) updateTargetMeasureRoute();
+    }
+
+    function toggleScaleMetric() {
+      setScaleMetric(scaleMetric === 'distance' ? 'energy' : 'distance');
+    }
+
+    function setDirectionMode(dir) {
+      directionMode = (dir === 'roundtrip') ? 'roundtrip' : 'oneway';
+      document.querySelectorAll('#directionChipGroup .chip').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.dir === directionMode);
+      });
+
+      const dirText = directionMode === 'roundtrip' ? '往復' : '片道';
+      document.getElementById('scaleMetricStatusLabel').textContent =
+        scaleMetric === 'energy' ? `消費kcal・${dirText}` : `実距離(m)・${dirText}`;
+
+      computeShortestPaths(startPoint[0], startPoint[1]);
+      renderRoadScaleLayers();
+      if (targetPoint) updateTargetMeasureRoute();
+    }
+
     function setScaleOverlay(enable) {
       showScaleOverlay = Boolean(enable);
       const topBtn = document.getElementById('btnToggleScale');
       topBtn.classList.toggle('active', showScaleOverlay);
-      topBtn.textContent = showScaleOverlay ? '🌈 スケールON' : '🗺️ 地図のみ';
+      topBtn.textContent = showScaleOverlay ? '🌈 表示ON' : '🗺️ 地図のみ';
 
       document.querySelectorAll('#scaleVisChipGroup .chip').forEach(btn => {
         const isOnChip = btn.dataset.vis === 'on';
         btn.classList.toggle('active', isOnChip === showScaleOverlay);
       });
 
-      document.getElementById('scaleVisStatusLabel').textContent = showScaleOverlay ? '表示中 (ON)' : '非表示 (地図のみ)';
       document.getElementById('legendContainer').classList.toggle('dimmed', !showScaleOverlay);
 
       if (startMarker) {
@@ -1867,8 +2267,8 @@
         btn.classList.toggle('active', Number(btn.dataset.pace) === walkingPace);
       });
 
-      updateLegendUI();
-      updateBadgeImages();
+      computeShortestPaths(startPoint[0], startPoint[1]);
+      renderRoadScaleLayers();
       map.triggerRepaint();
       if (targetPoint) updateTargetMeasureRoute();
     }
@@ -1888,8 +2288,6 @@
       document.querySelectorAll('#maxDistChipGroup .chip').forEach(btn => {
         btn.classList.toggle('active', Number(btn.dataset.dist) === maxDistance);
       });
-      updateLegendUI();
-      updateBadgeImages();
       computeShortestPaths(startPoint[0], startPoint[1]);
       renderRoadScaleLayers();
       if (targetPoint) updateTargetMeasureRoute();
@@ -1908,6 +2306,7 @@
       document.querySelectorAll('#labelContentChipGroup .chip').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.content === mode);
       });
+      updateLegendUI();
       updateBadgeImages();
       applyScaleVisibilityAndFilters();
       map.triggerRepaint();
@@ -2295,10 +2694,10 @@
           ctx.restore();
         }
 
-        // 7. 距離・所要時間バッジ（重なり回避付き、Z17・1km圏では100m間隔またはユーザー設定間隔で描画）
+        // 7. 距離・所要時間・消費エネルギーバッジ（重なり回避付き、Z17・1km圏ではstepMod=2またはユーザー設定間隔で描画）
         if (showScaleOverlay && labelContentMode !== 'none' && cachedLabelFeatures.length > 0) {
-          setProgress('距離・時間ラベルを配置中...', 88);
-          const exportInterval = tickIntervalSetting === 'auto' ? 100 : Number(tickIntervalSetting);
+          setProgress('距離・エネルギー・時間ラベルを配置中...', 88);
+          const exportStepMod = tickIntervalSetting === 'auto' ? 2 : Math.max(1, Math.round(Number(tickIntervalSetting) / 50));
           const placedBoxes = [];
           const badgeScale = Math.max(0.85, scale * 1.1);
           const edgeMargin = 36 * badgeScale;
@@ -2307,15 +2706,15 @@
           ctx.save();
           for (let i = 0; i < cachedLabelFeatures.length; i++) {
             const lf = cachedLabelFeatures[i];
-            const dist = lf.properties.dist;
-            if (dist % exportInterval !== 0) continue;
+            const stepIdx = lf.properties.stepIdx;
+            if (!stepIdx || stepIdx % exportStepMod !== 0) continue;
 
             const lx = toCanvasX(lf.geometry.coordinates[0]);
             const ly = toCanvasY(lf.geometry.coordinates[1]);
             if (lx < edgeMargin || lx > canvasSide - edgeMargin || ly < edgeMargin || ly > canvasSide - edgeMargin) continue;
 
-            const isMajor = (dist % 500 === 0);
-            const text = formatBadgeLabelText(dist);
+            const isMajor = (stepIdx % 10 === 0);
+            const text = formatBadgeLabelText(stepIdx);
             if (!text) continue;
 
             const fontSize = Math.round((isMajor ? 14 : 12) * badgeScale);
@@ -2372,7 +2771,8 @@
           ctx.strokeStyle = '#ffffff';
           ctx.stroke();
 
-          const labelStr = startPointName ? `🏠 ${startPointName} (0m)` : '🏠 スタート地点 (0m)';
+          const startElevStr = snapInfo ? `標高${snapInfo.elev.toFixed(1)}m` : '0m';
+          const labelStr = startPointName ? `🏠 ${startPointName} (${startElevStr})` : `🏠 スタート地点 (${startElevStr})`;
           const fSize = Math.round(13 * pinScale);
           ctx.font = `800 ${fSize}px -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif`;
           const lWidth = ctx.measureText(labelStr).width + 18 * pinScale;
@@ -2398,7 +2798,7 @@
 
         // 9-1. 左上タイトル＆条件カード
         ctx.save();
-        const cardW = Math.round(780 * uiScale);
+        const cardW = Math.round(860 * uiScale);
         const cardH = Math.round(150 * uiScale);
         ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
         ctx.beginPath();
@@ -2412,14 +2812,20 @@
         ctx.font = `800 ${Math.round(30 * uiScale)}px -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif`;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
-        ctx.fillText('小平市 防災・徒歩距離スケールマップ', pad + Math.round(24 * uiScale), pad + Math.round(22 * uiScale));
+        ctx.fillText('小平市 防災・徒歩距離＆消費エネルギースケールマップ', pad + Math.round(24 * uiScale), pad + Math.round(22 * uiScale));
 
         ctx.fillStyle = '#334155';
-        ctx.font = `700 ${Math.round(20 * uiScale)}px -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif`;
-        const startDesc = startPointName ? `出発地: ${startPointName}` : `出発地: ${startPoint[1].toFixed(5)}, ${startPoint[0].toFixed(5)}`;
+        ctx.font = `700 ${Math.round(19 * uiScale)}px -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif`;
+        const startElevText = snapInfo ? ` (標高${snapInfo.elev.toFixed(1)}m)` : '';
+        const startDesc = startPointName ? `出発地: ${startPointName}${startElevText}` : `出発地: ${startPoint[1].toFixed(4)}, ${startPoint[0].toFixed(4)}${startElevText}`;
         ctx.fillText(`${startDesc} ｜ 東西南北 各1km範囲 (Z17高精細)`, pad + Math.round(24 * uiScale), pad + Math.round(68 * uiScale));
         ctx.fillStyle = '#0284c7';
-        ctx.fillText(`歩行ペース設定: ${currentPaceLabel} ｜ 最大表示距離: ${(maxDistance / 1000).toFixed(1)}km`, pad + Math.round(24 * uiScale), pad + Math.round(102 * uiScale));
+        const { desc: loadDesc } = getLoadInfoForPace(walkingPace);
+        const dirDesc = directionMode === 'roundtrip' ? '往復' : '片道';
+        const rangeDesc = scaleMetric === 'energy'
+          ? `消費エネルギー基準(${dirDesc}) 最大${getMaxEnergyKcal()}kcal`
+          : `実距離基準(${dirDesc}) 最大${(maxDistance / 1000).toFixed(1)}km`;
+        ctx.fillText(`${currentPaceLabel}［${loadDesc}］｜ ${rangeDesc}`, pad + Math.round(24 * uiScale), pad + Math.round(102 * uiScale));
         ctx.restore();
 
         // 9-2. 右上コンパス
@@ -2493,18 +2899,33 @@
           ctx.fill();
 
           const fractions = [0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1];
+          const maxKcal = getMaxEnergyKcal();
+          const flat1mKcal = Math.max(0.01, computeSegmentEnergyKcal(1, 0, 0));
           ctx.font = `800 ${Math.round(18 * uiScale)}px -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif`;
           ctx.textAlign = 'center';
           fractions.forEach(f => {
             const tx = barX + barW * f;
-            const d = Math.round(maxDistance * f);
-            const m = Math.round(d / walkingPace);
-            ctx.fillStyle = '#0f172a';
-            ctx.textBaseline = 'bottom';
-            ctx.fillText(d === 0 ? '0m' : formatDistShort(d), tx, barY - Math.round(6 * uiScale));
-            ctx.fillStyle = '#0284c7';
-            ctx.textBaseline = 'top';
-            ctx.fillText(`${m}分`, tx, barY + barH + Math.round(6 * uiScale));
+            if (scaleMetric === 'energy') {
+              const k = Math.round(maxKcal * f);
+              const eqDist = Math.round((maxKcal * f) / flat1mKcal);
+              ctx.fillStyle = '#0f172a';
+              ctx.textBaseline = 'bottom';
+              ctx.fillText(k === 0 ? '0kcal' : `${k}kcal`, tx, barY - Math.round(6 * uiScale));
+              ctx.fillStyle = '#0284c7';
+              ctx.textBaseline = 'top';
+              ctx.fillText(eqDist === 0 ? '0m' : `約${formatDistShort(eqDist)}`, tx, barY + barH + Math.round(6 * uiScale));
+            } else {
+              const d = Math.round(maxDistance * f);
+              const m = directionMode === 'roundtrip'
+                ? Math.round(d / 80 + d / walkingPace)
+                : Math.round(d / walkingPace);
+              ctx.fillStyle = '#0f172a';
+              ctx.textBaseline = 'bottom';
+              ctx.fillText(d === 0 ? '0m' : formatDistShort(d), tx, barY - Math.round(6 * uiScale));
+              ctx.fillStyle = '#0284c7';
+              ctx.textBaseline = 'top';
+              ctx.fillText(`${m}分`, tx, barY + barH + Math.round(6 * uiScale));
+            }
           });
           ctx.restore();
         }
@@ -2953,11 +3374,13 @@
           const snap = findNearestEdge(g[0], g[1]);
           let distInfo = '';
           if (snap) {
-            const te = roadEdges[snap.edgeIdx];
-            const d = Math.min(nodeDist[te.u] + snap.t * te.len, nodeDist[te.v] + (1 - snap.t) * te.len);
-            if (Number.isFinite(d)) {
-              const mins = Math.max(1, Math.round(d / walkingPace));
-              distInfo = ` — 道のり 約${Math.round(d).toLocaleString()}m（徒歩 約${mins}分）`;
+            const evalRes = evaluatePointOnRoad(snap);
+            if (evalRes) {
+              const d = Math.round(evalRes.dist);
+              const timeStr = formatMinutesForOneWayDist(evalRes.dist);
+              const kcal = Math.round(evalRes.kcal);
+              const elevStr = formatElevDiff(evalRes.netElevDiff);
+              distInfo = ` — 道のり 約${d.toLocaleString()}m（${timeStr}）｜🔥 約${kcal}kcal｜⛰️ 標高差 ${elevStr}`;
             }
           }
           tooltip.style.display = 'block';
@@ -2974,13 +3397,17 @@
           layers: ['road-scale-line-layer', 'road-scale-casing-layer']
         });
         if (features && features.length > 0) {
-          const dist = features[0].properties.dist;
+          const props = features[0].properties;
+          const dist = props.dist;
           if (dist !== undefined) {
-            const mins = Math.max(1, Math.round(dist / walkingPace));
+            const timeStr = formatMinutesForOneWayDist(dist);
+            const kcal = props.kcal !== undefined ? Math.round(props.kcal) : Math.round(computeSegmentEnergyKcal(dist, 0, 0));
+            const dElev = props.dElev !== undefined ? formatElevDiff(props.dElev) : '±0m';
+            const elev = props.elev !== undefined ? `${Number(props.elev).toFixed(1)}m` : '';
             tooltip.style.display = 'block';
             tooltip.style.left = `${e.point.x}px`;
             tooltip.style.top = `${e.point.y}px`;
-            tooltip.textContent = `📏 道のり 約${dist.toLocaleString()}m（徒歩 約${mins}分）`;
+            tooltip.textContent = `📏 道のり 約${dist.toLocaleString()}m（${timeStr}）｜🔥 約${kcal} kcal｜⛰️ 標高 ${elev}（${dElev}）`;
             map.getCanvas().style.cursor = 'pointer';
             return;
           }
