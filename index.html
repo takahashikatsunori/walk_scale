@@ -862,13 +862,13 @@
     </div>
   </div>
 
-  <!-- 高解像度 (Z18・東西南北2km) PDF / PNG 出力モーダル -->
+  <!-- 高解像度 (Z17・東西南北1km・高DPI) PDF / PNG 出力モーダル -->
   <div id="exportModal" class="modal-backdrop">
     <div class="export-card">
       <div class="export-title">📥 マップ画像 / PDF ダウンロード</div>
       <div class="export-desc">
-        出発地を中心に<strong>東西南北 各2km（4km×4km範囲）</strong>を、<br>
-        <strong>ズームレベル18相当</strong>の高解像度で出力します。
+        出発地を中心に<strong>東西南北 各1km（2km×2km範囲）</strong>を、<br>
+        <strong>ズームレベル17相当（高精細・高DPI）</strong>で出力します。
       </div>
 
       <div id="exportProgressBox" class="export-progress-box">
@@ -880,10 +880,10 @@
 
       <div class="export-btn-group">
         <button id="btnExportPNG" type="button" class="export-action-btn png-btn" onclick="startHighResExport('png')">
-          🖼️ PNG画像で保存（Z18相当）
+          🖼️ PNG画像で保存（Z17・1km圏）
         </button>
         <button id="btnExportPDF" type="button" class="export-action-btn pdf-btn" onclick="startHighResExport('pdf')">
-          📄 PDFで保存（Z18相当）
+          📄 PDFで保存（Z17・1km圏・高DPI）
         </button>
       </div>
 
@@ -1959,13 +1959,17 @@
     }
 
     // =========================================================================
-    // 9. 出発地から東西南北 各2km（4km×4km）をズーム18相当でPDF/PNG出力
+    // 9. 出発地から東西南北 各1km（2km×2km）をズーム17相当・高DPIでPDF/PNG出力
     // =========================================================================
     let isExporting = false;
     let cancelExportRequested = false;
 
+    const EXPORT_ZOOM = 17;
+    const EXPORT_TILE_PX = 512; // タイル画像のネイティブ解像度 (512×512px)
+    const EXPORT_HALF_DIST_M = 1000; // 東西南北 各1km (1,000m)
+
     // タイル存在範囲（不要な404リクエストを防止）
-    const Z18_BOUNDS = { minX: 232584, maxX: 232684, minY: 103156, maxY: 103215 };
+    const Z17_BOUNDS = { minX: 116292, maxX: 116342, minY: 51578, maxY: 51607 };
     const Z13_BOUNDS = { minX: 7268, maxX: 7271, minY: 3223, maxY: 3225 };
 
     function openExportModal() {
@@ -1984,13 +1988,13 @@
       document.getElementById('exportModal').classList.remove('open');
     }
 
-    function lonToWorldPxZ18(lon) {
-      const worldSize = 256 * Math.pow(2, 18);
+    function lonToWorldPxZ17(lon) {
+      const worldSize = EXPORT_TILE_PX * Math.pow(2, EXPORT_ZOOM);
       return ((lon + 180) / 360) * worldSize;
     }
 
-    function latToWorldPxZ18(lat) {
-      const worldSize = 256 * Math.pow(2, 18);
+    function latToWorldPxZ17(lat) {
+      const worldSize = EXPORT_TILE_PX * Math.pow(2, EXPORT_ZOOM);
       const sinLat = Math.sin(lat * Math.PI / 180);
       const y = 0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI);
       return y * worldSize;
@@ -2006,9 +2010,11 @@
       });
     }
 
-    // 端末のCanvas上限を自動判定（PCでは8192pxのZ18等倍、モバイル上限時は4096pxへ自動調整）
-    function createExportCanvas(idealSide) {
-      const candidates = [idealSide, 6144, 4096];
+    // 端末のCanvas上限を自動判定（512pxネイティブタイル解像度以上の高DPIキャンバスを確保）
+    function createExportCanvas(nativeSide, format) {
+      const superSide = Math.min(8192, Math.round(nativeSide * (format === 'pdf' ? 2.0 : 1.5)));
+      const midSide = Math.min(6188, Math.round(nativeSide * 1.5));
+      const candidates = [superSide, midSide, Math.round(nativeSide), 4096];
       for (const side of candidates) {
         try {
           const c = document.createElement('canvas');
@@ -2051,51 +2057,54 @@
       };
 
       try {
-        // 1. 出発地から東西南北 各2,000m (4km×4km) のZ18ピクセル座標範囲を算出
+        // 1. 出発地から東西南北 各1,000m (2km×2km) のZ17 (512px/tile) ピクセル座標範囲を算出
         const centerLon = startPoint[0];
         const centerLat = startPoint[1];
-        const metersPerPxZ18 = (40075016.686 * Math.cos(centerLat * Math.PI / 180)) / (256 * Math.pow(2, 18));
-        const halfSpanZ18Px = 2000 / metersPerPxZ18; // 約4,125 px (片側2km)
-        const fullSpanZ18Px = halfSpanZ18Px * 2;     // 約8,251 px (全体4km)
+        const metersPerPxZ17 = (40075016.686 * Math.cos(centerLat * Math.PI / 180)) / (EXPORT_TILE_PX * Math.pow(2, EXPORT_ZOOM));
+        const halfSpanZ17Px = EXPORT_HALF_DIST_M / metersPerPxZ17; // 約2,063 px (片側1km)
+        const fullSpanZ17Px = halfSpanZ17Px * 2;                   // 約4,126 px (全体2km・Z17等倍)
 
-        const centerWorldX = lonToWorldPxZ18(centerLon);
-        const centerWorldY = latToWorldPxZ18(centerLat);
-        const minWorldX = centerWorldX - halfSpanZ18Px;
-        const maxWorldX = centerWorldX + halfSpanZ18Px;
-        const minWorldY = centerWorldY - halfSpanZ18Px;
-        const maxWorldY = centerWorldY + halfSpanZ18Px;
+        const centerWorldX = lonToWorldPxZ17(centerLon);
+        const centerWorldY = latToWorldPxZ17(centerLat);
+        const minWorldX = centerWorldX - halfSpanZ17Px;
+        const maxWorldX = centerWorldX + halfSpanZ17Px;
+        const minWorldY = centerWorldY - halfSpanZ17Px;
+        const maxWorldY = centerWorldY + halfSpanZ17Px;
 
-        const idealCanvasSide = Math.min(8192, Math.round(fullSpanZ18Px));
-        const { canvas, ctx, side: canvasSide } = createExportCanvas(idealCanvasSide);
-        const scale = canvasSide / fullSpanZ18Px; // Z18ピクセル -> 出力Canvasピクセル係数
+        const { canvas, ctx, side: canvasSide } = createExportCanvas(fullSpanZ17Px, format);
+        const scale = canvasSide / fullSpanZ17Px; // Z17ネイティブピクセル -> 出力Canvasピクセル係数 (1.0〜2.0x)
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
 
         // 背景を白で初期化
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvasSide, canvasSide);
 
-        const toCanvasX = (lon) => (lonToWorldPxZ18(lon) - minWorldX) * scale;
-        const toCanvasY = (lat) => (latToWorldPxZ18(lat) - minWorldY) * scale;
+        const toCanvasX = (lon) => (lonToWorldPxZ17(lon) - minWorldX) * scale;
+        const toCanvasY = (lat) => (latToWorldPxZ17(lat) - minWorldY) * scale;
 
-        const minTx = Math.floor(minWorldX / 256);
-        const maxTx = Math.floor(maxWorldX / 256);
-        const minTy = Math.floor(minWorldY / 256);
-        const maxTy = Math.floor(maxWorldY / 256);
+        const minTx = Math.floor(minWorldX / EXPORT_TILE_PX);
+        const maxTx = Math.floor(maxWorldX / EXPORT_TILE_PX);
+        const minTy = Math.floor(minWorldY / EXPORT_TILE_PX);
+        const maxTy = Math.floor(maxWorldY / EXPORT_TILE_PX);
 
-        // 2. Z18範囲外の周辺部も欠けないよう、まずZ13ベースタイルを下敷き描画
+        // 2. Z17範囲外の周辺部も欠けないよう、まずZ13ベースタイルを下敷き描画 (2^(17-13) = 16倍)
         setProgress('広域背景タイルを準備中...', 5);
-        const minTx13 = Math.floor(minTx / 32);
-        const maxTx13 = Math.floor(maxTx / 32);
-        const minTy13 = Math.floor(minTy / 32);
-        const maxTy13 = Math.floor(maxTy / 32);
+        const zDiffFactor = Math.pow(2, EXPORT_ZOOM - 13); // 16
+        const minTx13 = Math.floor(minTx / zDiffFactor);
+        const maxTx13 = Math.floor(maxTx / zDiffFactor);
+        const minTy13 = Math.floor(minTy / zDiffFactor);
+        const maxTy13 = Math.floor(maxTy / zDiffFactor);
         for (let tx13 = minTx13; tx13 <= maxTx13; tx13++) {
           for (let ty13 = minTy13; ty13 <= maxTy13; ty13++) {
             if (tx13 >= Z13_BOUNDS.minX && tx13 <= Z13_BOUNDS.maxX &&
                 ty13 >= Z13_BOUNDS.minY && ty13 <= Z13_BOUNDS.maxY) {
               const img13 = await loadTileImage(`./tiles/13/${tx13}/${ty13}.png`);
               if (img13) {
-                const tileWorldX = tx13 * 32 * 256;
-                const tileWorldY = ty13 * 32 * 256;
-                const tileSpan = 32 * 256 * scale;
+                const tileWorldX = tx13 * zDiffFactor * EXPORT_TILE_PX;
+                const tileWorldY = ty13 * zDiffFactor * EXPORT_TILE_PX;
+                const tileSpan = zDiffFactor * EXPORT_TILE_PX * scale;
                 const dx = (tileWorldX - minWorldX) * scale;
                 const dy = (tileWorldY - minWorldY) * scale;
                 ctx.drawImage(img13, dx, dy, tileSpan, tileSpan);
@@ -2104,41 +2113,41 @@
           }
         }
 
-        // 3. Z18タイル一覧を作成し並列バッチで高速描画
-        const z18Tasks = [];
+        // 3. Z17タイル一覧を作成し並列バッチで高速描画
+        const z17Tasks = [];
         for (let ty = minTy; ty <= maxTy; ty++) {
           for (let tx = minTx; tx <= maxTx; tx++) {
-            if (tx >= Z18_BOUNDS.minX && tx <= Z18_BOUNDS.maxX &&
-                ty >= Z18_BOUNDS.minY && ty <= Z18_BOUNDS.maxY) {
-              z18Tasks.push({ tx, ty });
+            if (tx >= Z17_BOUNDS.minX && tx <= Z17_BOUNDS.maxX &&
+                ty >= Z17_BOUNDS.minY && ty <= Z17_BOUNDS.maxY) {
+              z17Tasks.push({ tx, ty });
             }
           }
         }
 
-        const totalTiles = z18Tasks.length;
+        const totalTiles = z17Tasks.length;
         const BATCH_SIZE = 32;
         let loadedCount = 0;
 
         for (let i = 0; i < totalTiles; i += BATCH_SIZE) {
           if (cancelExportRequested) return;
-          const batch = z18Tasks.slice(i, i + BATCH_SIZE);
+          const batch = z17Tasks.slice(i, i + BATCH_SIZE);
           const imgs = await Promise.all(
-            batch.map(t => loadTileImage(`./tiles/18/${t.tx}/${t.ty}.png`))
+            batch.map(t => loadTileImage(`./tiles/17/${t.tx}/${t.ty}.png`))
           );
 
           for (let j = 0; j < batch.length; j++) {
             const img = imgs[j];
             if (!img) continue;
             const { tx, ty } = batch[j];
-            const dx = (tx * 256 - minWorldX) * scale;
-            const dy = (ty * 256 - minWorldY) * scale;
-            const dw = 256 * scale + 0.4; // タイル境界の隙間防止
+            const dx = (tx * EXPORT_TILE_PX - minWorldX) * scale;
+            const dy = (ty * EXPORT_TILE_PX - minWorldY) * scale;
+            const dw = EXPORT_TILE_PX * scale + 0.5; // タイル境界の隙間防止
             ctx.drawImage(img, dx, dy, dw, dw);
           }
 
           loadedCount += batch.length;
           const pct = Math.min(75, Math.round(10 + (loadedCount / Math.max(1, totalTiles)) * 65));
-          setProgress(`Z18高解像度タイルを描画中... ${loadedCount} / ${totalTiles}枚`, pct);
+          setProgress(`Z17高精細タイルを描画中... ${loadedCount} / ${totalTiles}枚`, pct);
         }
 
         if (cancelExportRequested) return;
@@ -2153,7 +2162,7 @@
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
           ctx.strokeStyle = 'rgba(15, 23, 42, 0.55)';
-          ctx.lineWidth = Math.max(3, 11 * scale);
+          ctx.lineWidth = Math.max(3, 10.5 * scale);
           ctx.beginPath();
           for (let i = 0; i < cachedSegFeatures.length; i++) {
             const coords = cachedSegFeatures[i].geometry.coordinates;
@@ -2167,7 +2176,7 @@
           ctx.save();
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
-          ctx.lineWidth = Math.max(2, 7.5 * scale);
+          ctx.lineWidth = Math.max(2, 7.0 * scale);
           for (let i = 0; i < cachedSegFeatures.length; i++) {
             const f = cachedSegFeatures[i];
             const coords = f.geometry.coordinates;
@@ -2179,7 +2188,7 @@
           }
           ctx.restore();
 
-          // 4-3. メジャー目盛り線（Z18なので10m/50m/100m/500mすべて描画）
+          // 4-3. メジャー目盛り線（10m/50m/100m/500mすべて高精細ベクター描画）
           ctx.save();
           ctx.lineCap = 'butt';
           for (let i = 0; i < cachedTickFeatures.length; i++) {
@@ -2193,7 +2202,7 @@
 
             // 白縁取り
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
-            ctx.lineWidth = (lvl === 4 ? 5.5 : lvl === 3 ? 4.2 : lvl === 2 ? 3.2 : 2.2) * scale;
+            ctx.lineWidth = (lvl === 4 ? 5.2 : lvl === 3 ? 4.0 : lvl === 2 ? 3.0 : 2.0) * scale;
             ctx.beginPath();
             ctx.moveTo(x0, y0);
             ctx.lineTo(x1, y1);
@@ -2201,7 +2210,7 @@
 
             // 目盛り本体
             ctx.strokeStyle = lvl >= 3 ? '#0f172a' : getColorAtRatio(tf.properties.ratio);
-            ctx.lineWidth = (lvl === 4 ? 3.2 : lvl === 3 ? 2.4 : lvl === 2 ? 1.8 : 1.2) * scale;
+            ctx.lineWidth = (lvl === 4 ? 3.0 : lvl === 3 ? 2.2 : lvl === 2 ? 1.6 : 1.1) * scale;
             ctx.beginPath();
             ctx.moveTo(x0, y0);
             ctx.lineTo(x1, y1);
@@ -2229,7 +2238,7 @@
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
           ctx.strokeStyle = '#0f172a';
-          ctx.lineWidth = Math.max(5, 12 * scale);
+          ctx.lineWidth = Math.max(5, 11.5 * scale);
           ctx.beginPath();
           targetRouteCoords.forEach((pt, idx) => {
             if (idx === 0) ctx.moveTo(toCanvasX(pt[0]), toCanvasY(pt[1]));
@@ -2238,7 +2247,7 @@
           ctx.stroke();
 
           ctx.strokeStyle = '#fde047';
-          ctx.lineWidth = Math.max(3, 7 * scale);
+          ctx.lineWidth = Math.max(3, 6.8 * scale);
           ctx.stroke();
           ctx.restore();
         }
@@ -2246,7 +2255,7 @@
         // 6. 避難所・給水拠点アイコン（表示ON時）
         if (showFacilities && facilitiesData.length > 0) {
           ctx.save();
-          const r = Math.max(8, 13 * scale);
+          const r = Math.max(8, 12.5 * scale);
           for (const f of facilitiesData) {
             const fx = toCanvasX(f.coords[0]);
             const fy = toCanvasY(f.coords[1]);
@@ -2261,7 +2270,7 @@
             ctx.arc(fx, fy, r, 0, Math.PI * 2);
             ctx.fillStyle = bg;
             ctx.fill();
-            ctx.lineWidth = Math.max(1.5, 2.5 * scale);
+            ctx.lineWidth = Math.max(1.5, 2.4 * scale);
             ctx.strokeStyle = '#ffffff';
             ctx.stroke();
 
@@ -2273,12 +2282,14 @@
           ctx.restore();
         }
 
-        // 7. 距離・所要時間バッジ（重なり回避付き、Z18では100m間隔またはユーザー設定間隔で描画）
+        // 7. 距離・所要時間バッジ（重なり回避付き、Z17・1km圏では100m間隔またはユーザー設定間隔で描画）
         if (showScaleOverlay && labelContentMode !== 'none' && cachedLabelFeatures.length > 0) {
           setProgress('距離・時間ラベルを配置中...', 88);
           const exportInterval = tickIntervalSetting === 'auto' ? 100 : Number(tickIntervalSetting);
           const placedBoxes = [];
-          const badgeScale = Math.max(0.85, scale * 1.25);
+          const badgeScale = Math.max(0.85, scale * 1.1);
+          const edgeMargin = 36 * badgeScale;
+          const padBox = 5 * badgeScale;
 
           ctx.save();
           for (let i = 0; i < cachedLabelFeatures.length; i++) {
@@ -2288,7 +2299,7 @@
 
             const lx = toCanvasX(lf.geometry.coordinates[0]);
             const ly = toCanvasY(lf.geometry.coordinates[1]);
-            if (lx < 40 || lx > canvasSide - 40 || ly < 40 || ly > canvasSide - 40) continue;
+            if (lx < edgeMargin || lx > canvasSide - edgeMargin || ly < edgeMargin || ly > canvasSide - edgeMargin) continue;
 
             const isMajor = (dist % 500 === 0);
             const text = formatBadgeLabelText(dist);
@@ -2299,7 +2310,7 @@
             const tw = ctx.measureText(text).width;
             const bw = tw + 22 * badgeScale;
             const bh = fontSize + 10 * badgeScale;
-            const box = { x0: lx - bw / 2 - 6, y0: ly - bh / 2 - 6, x1: lx + bw / 2 + 6, y1: ly + bh / 2 + 6 };
+            const box = { x0: lx - bw / 2 - padBox, y0: ly - bh / 2 - padBox, x1: lx + bw / 2 + padBox, y1: ly + bh / 2 + padBox };
 
             let overlaps = false;
             for (let k = 0; k < placedBoxes.length; k++) {
@@ -2338,7 +2349,7 @@
         {
           const sx = toCanvasX(startPoint[0]);
           const sy = toCanvasY(startPoint[1]);
-          const pinScale = Math.max(1.0, scale * 1.6);
+          const pinScale = Math.max(1.0, scale * 1.35);
           ctx.save();
           ctx.beginPath();
           ctx.arc(sx, sy, 14 * pinScale, 0, Math.PI * 2);
@@ -2393,7 +2404,7 @@
         ctx.fillStyle = '#334155';
         ctx.font = `700 ${Math.round(20 * uiScale)}px -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif`;
         const startDesc = startPointName ? `出発地: ${startPointName}` : `出発地: ${startPoint[1].toFixed(5)}, ${startPoint[0].toFixed(5)}`;
-        ctx.fillText(`${startDesc} ｜ 東西南北 各2km範囲 (Z18相当)`, pad + Math.round(24 * uiScale), pad + Math.round(68 * uiScale));
+        ctx.fillText(`${startDesc} ｜ 東西南北 各1km範囲 (Z17高精細)`, pad + Math.round(24 * uiScale), pad + Math.round(68 * uiScale));
         ctx.fillStyle = '#0284c7';
         ctx.fillText(`歩行ペース設定: ${currentPaceLabel} ｜ 最大表示距離: ${(maxDistance / 1000).toFixed(1)}km`, pad + Math.round(24 * uiScale), pad + Math.round(102 * uiScale));
         ctx.restore();
@@ -2437,7 +2448,7 @@
         ctx.fillText('N', 0, -ah - 2 * uiScale);
         ctx.restore();
 
-        // 9-3. 左下グラデーション凡例＆500mスケールバー
+        // 9-3. 左下グラデーション凡例
         if (showScaleOverlay) {
           ctx.save();
           const legW = Math.round(820 * uiScale);
@@ -2485,16 +2496,17 @@
           ctx.restore();
         }
 
-        // 9-4. 右下クレジット＆500m実寸スケールバー
+        // 9-4. 右下クレジット＆250m実寸スケールバー
         ctx.save();
-        const scale500Px = (500 / metersPerPxZ18) * scale;
+        const scaleBarMeters = 250;
+        const scaleBarPx = (scaleBarMeters / metersPerPxZ17) * scale;
         const sbRight = canvasSide - pad;
-        const sbLeft = sbRight - scale500Px;
+        const sbLeft = sbRight - scaleBarPx;
         const sbY = canvasSide - pad - Math.round(36 * uiScale);
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
         ctx.beginPath();
-        ctx.roundRect(sbLeft - Math.round(20 * uiScale), sbY - Math.round(36 * uiScale), scale500Px + Math.round(40 * uiScale), Math.round(72 * uiScale), Math.round(10 * uiScale));
+        ctx.roundRect(sbLeft - Math.round(20 * uiScale), sbY - Math.round(36 * uiScale), scaleBarPx + Math.round(40 * uiScale), Math.round(72 * uiScale), Math.round(10 * uiScale));
         ctx.fill();
 
         ctx.strokeStyle = '#0f172a';
@@ -2510,7 +2522,7 @@
         ctx.font = `800 ${Math.round(18 * uiScale)}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        ctx.fillText('500 m (直線)', (sbLeft + sbRight) / 2, sbY - Math.round(4 * uiScale));
+        ctx.fillText(`${scaleBarMeters} m (直線)`, (sbLeft + sbRight) / 2, sbY - Math.round(4 * uiScale));
 
         ctx.fillStyle = '#475569';
         ctx.font = `600 ${Math.round(14 * uiScale)}px sans-serif`;
@@ -2523,7 +2535,7 @@
 
         // 10. ファイル生成＆ダウンロード実行
         if (format === 'png') {
-          setProgress('PNG画像を生成・保存しています...', 95);
+          setProgress('高精細PNG画像を生成・保存しています...', 95);
           await new Promise((resolve, reject) => {
             canvas.toBlob((blob) => {
               if (!blob) {
@@ -2533,7 +2545,7 @@
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
-              a.download = `小平市徒歩スケールマップ_Z18_東西南北2km.png`;
+              a.download = `小平市徒歩スケールマップ_Z17_東西南北1km.png`;
               document.body.appendChild(a);
               a.click();
               a.remove();
@@ -2542,18 +2554,20 @@
             }, 'image/png');
           });
         } else {
-          setProgress('高解像度PDFを生成・保存しています...', 95);
+          const effectiveDpi = Math.round(canvasSide / (204 / 25.4));
+          setProgress(`高解像度PDF (${effectiveDpi} dpi) を生成・保存しています...`, 95);
           await new Promise(r => setTimeout(r, 30));
-          const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+          // 最高画質JPEG (0.98) + A4幅正方形シート (210mm×210mm) で約510〜1020dpiの高精細出力を実現
+          const highResDataUrl = canvas.toDataURL('image/jpeg', 0.98);
           const { jsPDF } = window.jspdf;
-          // 400mm × 400mm 大判正方形マップシートとして出力
           const pdf = new jsPDF({
             orientation: 'portrait',
             unit: 'mm',
-            format: [400, 400]
+            format: [210, 210],
+            compress: true
           });
-          pdf.addImage(jpegDataUrl, 'JPEG', 5, 5, 390, 390);
-          pdf.save(`小平市徒歩スケールマップ_Z18_東西南北2km.pdf`);
+          pdf.addImage(highResDataUrl, 'JPEG', 3, 3, 204, 204, undefined, 'FAST');
+          pdf.save(`小平市徒歩スケールマップ_Z17_東西南北1km.pdf`);
         }
 
         setProgress('✅ ダウンロードを開始しました！', 100);
