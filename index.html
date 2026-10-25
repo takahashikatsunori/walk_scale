@@ -794,7 +794,7 @@
         </div>
         <div class="pace-slider-row">
           <span style="font-size:9.5px; color:#64748b;">遅</span>
-          <input id="paceSlider" type="range" min="25" max="100" step="5" value="50" oninput="onPaceSliderInput(this.value)" />
+          <input id="paceSlider" type="range" min="25" max="100" step="5" value="50" oninput="onPaceSliderInput(this.value)" onchange="onPaceSliderInput(this.value)" />
           <span style="font-size:9.5px; color:#64748b;">速</span>
         </div>
       </div>
@@ -1281,6 +1281,13 @@
 
     function updateBadgeImages() {
       const dpr = Math.min(window.devicePixelRatio || 2, 2);
+      // MapLibreのupdateImageは前回と同一のwidth/heightが必須なため、
+      // 文字数やスマホ固有のプロポーショナルフォント幅が変わっても常に同一サイズになる固定キャンバス内に中央描画する
+      const fixedLogicalW = 104;
+      const fixedLogicalH = 24;
+      const canvasW = Math.round(fixedLogicalW * dpr);
+      const canvasH = Math.round(fixedLogicalH * dpr);
+
       const step = 50;
       for (let dist = step; dist <= 3000; dist += step) {
         const badgeId = `badge-${dist}`;
@@ -1297,25 +1304,25 @@
         const dotWidth = 5;
 
         const canvas = document.createElement('canvas');
+        canvas.width = canvasW;
+        canvas.height = canvasH;
         const ctx = canvas.getContext('2d');
-        const fontStr = `${isMajor ? '800' : '700'} ${fontSize * dpr}px -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif`;
-        ctx.font = fontStr;
-        const textWidth = text ? ctx.measureText(text).width / dpr : 0;
-
-        const w = Math.ceil((textWidth + padX * 2 + dotWidth + 4) * dpr);
-        const h = Math.ceil((fontSize + padY * 2 + 4) * dpr);
-        canvas.width = Math.max(8, w);
-        canvas.height = Math.max(8, h);
 
         if (text) {
           ctx.scale(dpr, dpr);
-          const logicalW = w / dpr;
-          const logicalH = h / dpr;
-          const r = (logicalH - 2) / 2;
+          const fontStr = `${isMajor ? '800' : '700'} ${fontSize}px -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif`;
+          ctx.font = fontStr;
+          const textWidth = ctx.measureText(text).width;
+
+          const pillW = Math.min(fixedLogicalW - 2, Math.ceil(textWidth + padX * 2 + dotWidth + 4));
+          const pillH = Math.min(fixedLogicalH - 2, Math.ceil(fontSize + padY * 2 + 2));
+          const ox = (fixedLogicalW - pillW) / 2;
+          const oy = (fixedLogicalH - pillH) / 2;
+          const r = pillH / 2;
 
           ctx.save();
           ctx.beginPath();
-          ctx.roundRect(1, 1, logicalW - 2, logicalH - 2, r);
+          ctx.roundRect(ox, oy, pillW, pillH, r);
           ctx.fillStyle = isMajor ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.94)';
           ctx.fill();
           ctx.lineWidth = isMajor ? 1.8 : 1.3;
@@ -1324,19 +1331,25 @@
           ctx.restore();
 
           ctx.beginPath();
-          ctx.arc(padX + 1.5, logicalH / 2, isMajor ? 3.4 : 2.8, 0, Math.PI * 2);
+          ctx.arc(ox + padX + 1.5, fixedLogicalH / 2, isMajor ? 3.4 : 2.8, 0, Math.PI * 2);
           ctx.fillStyle = accentColor;
           ctx.fill();
 
-          ctx.font = `${isMajor ? '800' : '700'} ${fontSize}px -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif`;
+          ctx.font = fontStr;
           ctx.fillStyle = isMajor ? '#ffffff' : '#0f172a';
           ctx.textBaseline = 'middle';
-          ctx.fillText(text, padX + dotWidth + 3, logicalH / 2 + 0.5);
+          ctx.fillText(text, ox + padX + dotWidth + 3, fixedLogicalH / 2 + 0.5);
         }
 
         const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         if (map.hasImage(badgeId)) {
-          map.updateImage(badgeId, imgData);
+          const prev = map.getImage(badgeId);
+          if (prev && prev.data && prev.data.width === canvas.width && prev.data.height === canvas.height) {
+            map.updateImage(badgeId, imgData);
+          } else {
+            map.removeImage(badgeId);
+            map.addImage(badgeId, imgData, { pixelRatio: dpr });
+          }
         } else {
           map.addImage(badgeId, imgData, { pixelRatio: dpr });
           registeredBadgeIds.add(badgeId);
