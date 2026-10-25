@@ -1,0 +1,2971 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>小平市 防災・徒歩距離スケールマップ</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" crossorigin="anonymous" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous"></script>
+  <script src="./data/roads_data.js"></script>
+  <style>
+    :root {
+      --bg-glass: rgba(255, 255, 255, 0.94);
+      --bg-glass-dark: rgba(15, 23, 42, 0.90);
+      --border-subtle: rgba(148, 163, 184, 0.35);
+      --primary: #0284c7;
+      --primary-light: #e0f2fe;
+      --accent-green: #059669;
+      --accent-orange: #ea580c;
+      --text-main: #0f172a;
+      --text-sub: #475569;
+      --shadow-lg: 0 10px 28px rgba(15, 23, 42, 0.22);
+      --shadow-sm: 0 3px 10px rgba(15, 23, 42, 0.14);
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+      color: var(--text-main);
+      background: #f1f5f9;
+      user-select: none;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* 上部コンパクト操作バー */
+    .top-bar {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      right: 48px;
+      z-index: 20;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 5px;
+      pointer-events: none;
+    }
+
+    .mode-switch-group {
+      display: inline-flex;
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      padding: 2.5px;
+      border-radius: 999px;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border-subtle);
+      pointer-events: auto;
+    }
+
+    .mode-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-sub);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 5px 9px;
+      border-radius: 999px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      transition: all 0.18s ease;
+      white-space: nowrap;
+    }
+
+    .mode-btn.active {
+      background: var(--primary);
+      color: #ffffff;
+      box-shadow: 0 2px 6px rgba(2, 132, 199, 0.35);
+    }
+
+    .mode-btn.active.measure-active {
+      background: var(--accent-orange);
+      box-shadow: 0 2px 6px rgba(234, 88, 12, 0.35);
+    }
+
+    .pill-btn {
+      pointer-events: auto;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      color: var(--text-main);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 5.5px 9px;
+      border-radius: 999px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      box-shadow: var(--shadow-sm);
+      transition: all 0.18s ease;
+      white-space: nowrap;
+    }
+
+    .pill-btn.active {
+      background: #ecfdf5;
+      border-color: #10b981;
+      color: #065f46;
+    }
+
+    .pill-btn.export-btn {
+      background: #0f172a;
+      color: #ffffff;
+      border-color: #334155;
+    }
+
+    .pill-btn.export-btn:hover {
+      background: #1e293b;
+    }
+
+    /* 計測ルート情報バナー */
+    .measure-banner {
+      position: absolute;
+      top: 46px;
+      left: 8px;
+      z-index: 20;
+      max-width: min(350px, calc(100vw - 16px));
+      background: var(--bg-glass-dark);
+      color: #ffffff;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-radius: 10px;
+      padding: 7px 10px;
+      box-shadow: var(--shadow-sm);
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 11px;
+      pointer-events: auto;
+    }
+
+    .measure-banner.visible {
+      display: flex;
+    }
+
+    .measure-stats {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .measure-stats-main {
+      font-size: 12.5px;
+      font-weight: 800;
+      color: #fde047;
+    }
+
+    .measure-stats-sub {
+      font-size: 10px;
+      color: #cbd5e1;
+    }
+
+    .measure-clear-btn {
+      background: rgba(255, 255, 255, 0.16);
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 10.5px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    /* PCホバー時の距離ツールチップ */
+    .hover-tooltip {
+      position: absolute;
+      z-index: 30;
+      pointer-events: none;
+      background: rgba(15, 23, 42, 0.92);
+      color: #ffffff;
+      padding: 4px 8px;
+      border-radius: 7px;
+      font-size: 11.5px;
+      font-weight: 700;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+      transform: translate(-50%, -135%);
+      display: none;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    /* 下部パネル（従来比約20%縮小・スマホでも余裕を持って収まるコンパクト設計） */
+    .bottom-dock {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 25;
+      width: min(78vw, 356px);
+      background: var(--bg-glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-radius: 14px;
+      box-shadow: var(--shadow-lg);
+      border: 1px solid rgba(255, 255, 255, 0.85);
+      padding: 8px 11px;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* 凡例ヘッダー行 */
+    .dock-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+      margin-bottom: 5px;
+    }
+
+    .pace-summary-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 10.5px;
+      font-weight: 700;
+      color: var(--text-main);
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .pace-summary-btn:hover {
+      background: #e2e8f0;
+    }
+
+    .settings-toggle-btn {
+      background: var(--primary-light);
+      color: var(--primary);
+      border: 1px solid rgba(2, 132, 199, 0.25);
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 10.5px;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* グラデーション凡例バー */
+    .legend-container {
+      width: 100%;
+      transition: opacity 0.2s;
+    }
+
+    .legend-container.dimmed {
+      opacity: 0.4;
+    }
+
+    .legend-labels-top,
+    .legend-labels-bottom {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9.5px;
+      font-weight: 700;
+      line-height: 1.15;
+    }
+
+    .legend-labels-top {
+      color: var(--text-main);
+      margin-bottom: 2px;
+    }
+
+    .legend-labels-bottom {
+      color: var(--primary);
+      margin-top: 2px;
+    }
+
+    .legend-bar-wrap {
+      position: relative;
+      height: 9px;
+      border-radius: 999px;
+      overflow: hidden;
+      box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(15, 23, 42, 0.18);
+    }
+
+    .legend-bar {
+      width: 100%;
+      height: 100%;
+    }
+
+    .legend-ticks-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .legend-tick-mark {
+      width: 1px;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.75);
+    }
+
+    .legend-tick-mark:first-child,
+    .legend-tick-mark:last-child {
+      background: transparent;
+    }
+
+    .legend-caption {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 9px;
+      color: var(--text-sub);
+      margin-top: 3px;
+    }
+
+    /* 展開式設定ドロワー（コンパクト化） */
+    .settings-drawer {
+      max-height: 0;
+      overflow: hidden;
+      opacity: 0;
+      transition: max-height 0.28s ease, opacity 0.2s ease, margin-top 0.2s ease;
+    }
+
+    .settings-drawer.open {
+      max-height: 58vh;
+      overflow-y: auto;
+      opacity: 1;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #e2e8f0;
+    }
+
+    .setting-section {
+      margin-bottom: 9px;
+    }
+
+    .setting-section:last-child {
+      margin-bottom: 2px;
+    }
+
+    .setting-label {
+      font-size: 10.5px;
+      font-weight: 800;
+      color: var(--text-main);
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .setting-subvalue {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .chip {
+      flex: 1 1 auto;
+      min-width: 46px;
+      text-align: center;
+      padding: 4.5px 5px;
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 7px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: var(--text-sub);
+      cursor: pointer;
+      transition: all 0.15s;
+      line-height: 1.2;
+    }
+
+    .chip.active {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+
+    .pace-slider-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .pace-slider-row input[type="range"] {
+      flex: 1;
+      accent-color: var(--primary);
+      height: 4px;
+      cursor: pointer;
+    }
+
+    .facility-select-row {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .facility-select {
+      flex: 1;
+      min-width: 0;
+      padding: 5px 6px;
+      font-size: 10.5px;
+      border-radius: 7px;
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    .gps-btn {
+      padding: 5px 8px;
+      font-size: 10.5px;
+      font-weight: 700;
+      border-radius: 7px;
+      border: 1px solid #0284c7;
+      background: #e0f2fe;
+      color: #0369a1;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* スタートマーカー・ターゲットマーカー */
+    .start-pin-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: grab;
+      filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.38));
+    }
+
+    .start-pin-badge {
+      background: #0f172a;
+      color: #ffffff;
+      font-size: 10.5px;
+      font-weight: 800;
+      padding: 2px 6px;
+      border-radius: 999px;
+      border: 1.5px solid #ffffff;
+      white-space: nowrap;
+      margin-bottom: 2px;
+    }
+
+    .start-pin-icon {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: #10b981;
+      border: 2.5px solid #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      box-shadow: 0 0 0 2px #059669;
+    }
+
+    .target-pin-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+      filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.38));
+    }
+
+    .target-pin-badge {
+      background: #ea580c;
+      color: #ffffff;
+      font-size: 10.5px;
+      font-weight: 800;
+      padding: 2px 6px;
+      border-radius: 999px;
+      border: 1.5px solid #ffffff;
+      white-space: nowrap;
+      margin-bottom: 2px;
+    }
+
+    .target-pin-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #f97316;
+      border: 2px solid #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+
+    /* ローディング表示 */
+    .loading-toast {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 50;
+      background: rgba(15, 23, 42, 0.9);
+      color: #ffffff;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* 高解像度PDF/PNG出力モーダル */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(15, 23, 42, 0.55);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .export-card {
+      width: 100%;
+      max-width: 340px;
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 18px 16px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      text-align: center;
+    }
+
+    .export-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--text-main);
+      margin-bottom: 4px;
+    }
+
+    .export-desc {
+      font-size: 11.5px;
+      color: var(--text-sub);
+      line-height: 1.45;
+      margin-bottom: 12px;
+    }
+
+    .export-btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .export-action-btn {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: none;
+      font-size: 12.5px;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: opacity 0.15s, transform 0.15s;
+    }
+
+    .export-action-btn.png-btn {
+      background: #0284c7;
+      color: #ffffff;
+    }
+
+    .export-action-btn.pdf-btn {
+      background: #059669;
+      color: #ffffff;
+    }
+
+    .export-action-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .export-progress-box {
+      display: none;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    .export-progress-box.active {
+      display: block;
+    }
+
+    .export-progress-text {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 6px;
+    }
+
+    .export-progress-bar-bg {
+      width: 100%;
+      height: 7px;
+      background: #e2e8f0;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .export-progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #0284c7, #10b981);
+      transition: width 0.15s ease;
+    }
+
+    .export-close-btn {
+      width: 100%;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+      background: #f1f5f9;
+      color: var(--text-sub);
+      font-size: 11.5px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    /* MapLibre標準コントロールの位置微調整 */
+    .maplibregl-ctrl-bottom-left,
+    .maplibregl-ctrl-bottom-right {
+      bottom: 92px !important;
+    }
+
+    @media (max-width: 480px) {
+      .bottom-dock {
+        bottom: 8px;
+        width: min(78vw, 304px);
+        padding: 7px 9px;
+      }
+      .maplibregl-ctrl-bottom-left,
+      .maplibregl-ctrl-bottom-right {
+        bottom: 88px !important;
+      }
+      .mode-btn, .pill-btn {
+        font-size: 10.5px;
+        padding: 4.5px 7.5px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- 初期ロード表示 -->
+  <div id="loadingToast" class="loading-toast">
+    <span>⏳ 道路ネットワークデータを読み込み中...</span>
+  </div>
+
+  <!-- PCホバー時ツールチップ -->
+  <div id="hoverTooltip" class="hover-tooltip"></div>
+
+  <!-- 上部コンパクトバー -->
+  <div class="top-bar">
+    <div class="mode-switch-group" role="group" aria-label="タップ操作モード">
+      <button id="btnModeStart" class="mode-btn active" type="button" onclick="setTapMode('start')">
+        🏠 出発地
+      </button>
+      <button id="btnModeMeasure" class="mode-btn" type="button" onclick="setTapMode('measure')">
+        📏 計測
+      </button>
+    </div>
+    <button id="btnToggleScale" class="pill-btn active" type="button" onclick="toggleScaleOverlay()" title="グラデーション・スケール表示のON/OFF（地図のみモード切替）">
+      🌈 スケールON
+    </button>
+    <button id="btnToggleFacilities" class="pill-btn active" type="button" onclick="toggleFacilitiesLayer()">
+      🏫 避難・給水所
+    </button>
+    <button id="btnOpenExport" class="pill-btn export-btn" type="button" onclick="openExportModal()">
+      📥 保存
+    </button>
+  </div>
+
+  <!-- 計測ルート表示バナー -->
+  <div id="measureBanner" class="measure-banner">
+    <div class="measure-stats">
+      <div id="measureMainText" class="measure-stats-main">📏 道のり: ---m（約--分）</div>
+      <div id="measureSubText" class="measure-stats-sub">スタート地点からの最短歩行ルート</div>
+    </div>
+    <button class="measure-clear-btn" type="button" onclick="clearTargetMeasure()">✕ 解除</button>
+  </div>
+
+  <!-- 下部コンパクトドック（従来より約20%縮小） -->
+  <div class="bottom-dock">
+    <div class="dock-header">
+      <button class="pace-summary-btn" type="button" onclick="toggleSettingsDrawer()" title="タップして歩くペースや表示設定を変更">
+        <span id="currentPaceBadge">💧 水運搬 50m/分</span>
+        <span style="color:#64748b; font-weight:600;" id="currentMaxDistBadge">・3.0km</span>
+      </button>
+      <button id="btnSettingsToggle" class="settings-toggle-btn" type="button" onclick="toggleSettingsDrawer()">
+        ⚙️ 設定 <span id="settingsArrow">▲</span>
+      </button>
+    </div>
+
+    <!-- グラデーション＆時間・距離凡例 -->
+    <div id="legendContainer" class="legend-container">
+      <div id="legendLabelsTop" class="legend-labels-top"></div>
+      <div class="legend-bar-wrap">
+        <div id="legendBar" class="legend-bar"></div>
+        <div class="legend-ticks-overlay">
+          <div class="legend-tick-mark"></div>
+          <div class="legend-tick-mark"></div>
+          <div class="legend-tick-mark"></div>
+          <div class="legend-tick-mark"></div>
+          <div class="legend-tick-mark"></div>
+          <div class="legend-tick-mark"></div>
+          <div class="legend-tick-mark"></div>
+        </div>
+      </div>
+      <div id="legendLabelsBottom" class="legend-labels-bottom"></div>
+      <div class="legend-caption">
+        <span>▲距離 ／ ▼徒歩時間</span>
+        <span id="zoomStatusText">Z: 16.0</span>
+      </div>
+    </div>
+
+    <!-- 設定ドロワー（展開時のみ表示） -->
+    <div id="settingsDrawer" class="settings-drawer">
+      <!-- 0. グラデーション・スケール表示 ON/OFF -->
+      <div class="setting-section">
+        <div class="setting-label">
+          <span>🌈 計算結果（グラデーション）表示</span>
+          <span id="scaleVisStatusLabel" class="setting-subvalue">表示中 (ON)</span>
+        </div>
+        <div class="chip-row" id="scaleVisChipGroup">
+          <button type="button" class="chip active" data-vis="on" onclick="setScaleOverlay(true)">🌈 スケール表示 ON</button>
+          <button type="button" class="chip" data-vis="off" onclick="setScaleOverlay(false)">🗺️ 地図のみ (OFF)</button>
+        </div>
+      </div>
+
+      <!-- 1. 歩くペース -->
+      <div class="setting-section">
+        <div class="setting-label">
+          <span>🚶 歩くペース</span>
+          <span id="paceDetailLabel" class="setting-subvalue">50 m/分（3.0 km/h）</span>
+        </div>
+        <div class="chip-row">
+          <button type="button" class="chip" data-pace="80" onclick="setWalkingPace(80, '🚶 一般 80m/分')">🚶 一般<br><small>80m/分</small></button>
+          <button type="button" class="chip" data-pace="60" onclick="setWalkingPace(60, '👵 高齢・子 60m/分')">👵 高齢・子<br><small>60m/分</small></button>
+          <button type="button" class="chip active" data-pace="50" onclick="setWalkingPace(50, '💧 水運搬 50m/分')">💧 水運搬<br><small>50m/分</small></button>
+          <button type="button" class="chip" data-pace="40" onclick="setWalkingPace(40, '🐢 重荷物 40m/分')">🐢 重荷物<br><small>40m/分</small></button>
+        </div>
+        <div class="pace-slider-row">
+          <span style="font-size:9.5px; color:#64748b;">遅</span>
+          <input id="paceSlider" type="range" min="25" max="100" step="5" value="50" oninput="onPaceSliderInput(this.value)" />
+          <span style="font-size:9.5px; color:#64748b;">速</span>
+        </div>
+      </div>
+
+      <!-- 2. 最大表示距離 -->
+      <div class="setting-section">
+        <div class="setting-label">
+          <span>📏 最大計算距離</span>
+          <span id="maxDistDetailLabel" class="setting-subvalue">3,000 m</span>
+        </div>
+        <div class="chip-row" id="maxDistChipGroup">
+          <button type="button" class="chip" data-dist="500" onclick="setMaxDistance(500)">500m</button>
+          <button type="button" class="chip" data-dist="1000" onclick="setMaxDistance(1000)">1km</button>
+          <button type="button" class="chip" data-dist="1500" onclick="setMaxDistance(1500)">1.5km</button>
+          <button type="button" class="chip" data-dist="2000" onclick="setMaxDistance(2000)">2km</button>
+          <button type="button" class="chip active" data-dist="3000" onclick="setMaxDistance(3000)">3km</button>
+        </div>
+      </div>
+
+      <!-- 3. メジャー目盛り間隔 -->
+      <div class="setting-section">
+        <div class="setting-label">
+          <span>📐 目盛りラベル間隔</span>
+          <span id="tickIntervalLabel" class="setting-subvalue">自動</span>
+        </div>
+        <div class="chip-row" id="tickIntervalChipGroup">
+          <button type="button" class="chip active" data-interval="auto" onclick="setTickInterval('auto')">自動</button>
+          <button type="button" class="chip" data-interval="50" onclick="setTickInterval(50)">50m</button>
+          <button type="button" class="chip" data-interval="100" onclick="setTickInterval(100)">100m</button>
+          <button type="button" class="chip" data-interval="250" onclick="setTickInterval(250)">250m</button>
+          <button type="button" class="chip" data-interval="500" onclick="setTickInterval(500)">500m</button>
+        </div>
+      </div>
+
+      <!-- 4. ラベル表示内容 & 配色 -->
+      <div class="setting-section">
+        <div class="setting-label">
+          <span>🎨 ラベル内容 ＆ 配色テーマ</span>
+        </div>
+        <div class="chip-row" id="labelContentChipGroup" style="margin-bottom:4px;">
+          <button type="button" class="chip active" data-content="both" onclick="setLabelContent('both')">距離＋時間</button>
+          <button type="button" class="chip" data-content="dist" onclick="setLabelContent('dist')">距離のみ</button>
+          <button type="button" class="chip" data-content="time" onclick="setLabelContent('time')">時間のみ</button>
+          <button type="button" class="chip" data-content="none" onclick="setLabelContent('none')">線のみ</button>
+        </div>
+        <div class="chip-row" id="paletteChipGroup">
+          <button type="button" class="chip active" data-palette="standard" onclick="setColorPalette('standard')">🌈 標準</button>
+          <button type="button" class="chip" data-palette="thermal" onclick="setColorPalette('thermal')">🔥 ヒート</button>
+          <button type="button" class="chip" data-palette="viridis" onclick="setColorPalette('viridis')">👁️ 色覚配慮</button>
+        </div>
+      </div>
+
+      <!-- 5. スタート地点クイック移動 -->
+      <div class="setting-section">
+        <div class="setting-label">
+          <span>📍 避難所・給水拠点・現在地</span>
+        </div>
+        <div class="facility-select-row">
+          <select id="facilitySelect" class="facility-select" onchange="onSelectFacility(this.value)">
+            <option value="">▼ 施設を選択して移動...</option>
+          </select>
+          <button type="button" class="gps-btn" onclick="moveStartToCurrentLocation()">📍 現在地</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 高解像度 (Z18・東西南北2km) PDF / PNG 出力モーダル -->
+  <div id="exportModal" class="modal-backdrop">
+    <div class="export-card">
+      <div class="export-title">📥 マップ画像 / PDF ダウンロード</div>
+      <div class="export-desc">
+        出発地を中心に<strong>東西南北 各2km（4km×4km範囲）</strong>を、<br>
+        <strong>ズームレベル18相当</strong>の高解像度で出力します。
+      </div>
+
+      <div id="exportProgressBox" class="export-progress-box">
+        <div id="exportProgressText" class="export-progress-text">準備中...</div>
+        <div class="export-progress-bar-bg">
+          <div id="exportProgressBar" class="export-progress-bar-fill"></div>
+        </div>
+      </div>
+
+      <div class="export-btn-group">
+        <button id="btnExportPNG" type="button" class="export-action-btn png-btn" onclick="startHighResExport('png')">
+          🖼️ PNG画像で保存（Z18相当）
+        </button>
+        <button id="btnExportPDF" type="button" class="export-action-btn pdf-btn" onclick="startHighResExport('pdf')">
+          📄 PDFで保存（Z18相当）
+        </button>
+      </div>
+
+      <button id="btnCloseExportModal" type="button" class="export-close-btn" onclick="closeExportModal()">
+        閉じる
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. アプリ状態変数・カラーパレット定義
+    // =========================================================================
+    const PALETTES = {
+      standard: [
+        { t: 0.00, rgb: [0, 200, 83] },    // #00c853 エメラルドグリーン (0m)
+        { t: 0.18, rgb: [118, 224, 0] },   // #76e000 ライム
+        { t: 0.36, rgb: [255, 204, 0] },   // #ffcc00 イエロー
+        { t: 0.58, rgb: [255, 115, 0] },   // #ff7300 オレンジ
+        { t: 0.80, rgb: [229, 28, 35] },   // #e51c23 レッド
+        { t: 1.00, rgb: [142, 36, 170] }   // #8e24aa ディープパープル (最大距離)
+      ],
+      thermal: [
+        { t: 0.00, rgb: [0, 176, 255] },   // シアンブルー
+        { t: 0.25, rgb: [0, 230, 118] },   // グリーン
+        { t: 0.50, rgb: [255, 214, 0] },   // イエロー
+        { t: 0.75, rgb: [255, 109, 0] },   // オレンジ
+        { t: 1.00, rgb: [213, 0, 0] }      // ディープレッド
+      ],
+      viridis: [
+        { t: 0.00, rgb: [30, 136, 229] },  // ブルー
+        { t: 0.33, rgb: [0, 191, 165] },   // ティール
+        { t: 0.66, rgb: [124, 179, 66] },  // グリーン
+        { t: 1.00, rgb: [251, 192, 45] }   // ゴールドイエロー
+      ]
+    };
+
+    let currentPaletteKey = 'standard';
+    let walkingPace = 50; // m/分 (デフォルト: 水運搬目安 50m/分)
+    let currentPaceLabel = '💧 水運搬 50m/分';
+    let maxDistance = 3000; // m (最大3km)
+    let tickIntervalSetting = 'auto'; // 'auto' | 50 | 100 | 250 | 500
+    let labelContentMode = 'both'; // 'both' | 'dist' | 'time' | 'none'
+    let tapMode = 'start'; // 'start' | 'measure'
+    let showFacilities = true;
+    let showScaleOverlay = true; // デフォルトはグラデーション表示ON
+
+    // 道路グラフ構造
+    let roadNodes = []; // [[lon, lat], ...]
+    let roadEdges = []; // [{ u, v, len }, ...]
+    let roadAdj = [];   // [[{ to, len, edgeIdx }, ...], ...]
+    let spatialGrid = new Map();
+    const GRID_SCALE = 200; // 約500mメッシュ
+
+    // 最新の最短経路計算結果キャッシュ（エクスポートでも利用）
+    let startPoint = [139.4756, 35.7262]; // 初期位置（小平市中心部・津田町付近）
+    let startPointName = null;
+    let snapInfo = null;
+    let nodeDist = null;
+    let nodeParent = null;
+    let targetPoint = null;
+    let targetPointName = null;
+    let targetRouteCoords = null;
+    let targetRouteDist = null;
+    let facilitiesData = [];
+
+    let cachedSegFeatures = [];
+    let cachedTickFeatures = [];
+    let cachedLabelFeatures = [];
+
+    let startMarker = null;
+    let targetMarker = null;
+    let registeredBadgeIds = new Set();
+
+    // =========================================================================
+    // 2. MapLibre GL 初期化 (タイルはz18まで、マップ操作は最大ズーム19まで許可)
+    // =========================================================================
+    const map = new maplibregl.Map({
+      container: 'map',
+      minZoom: 13,
+      maxZoom: 19,
+      center: startPoint,
+      zoom: 16,
+      preserveDrawingBuffer: true,
+      attributionControl: false,
+      style: {
+        version: 8,
+        sources: {
+          'custom-tiles': {
+            type: 'raster',
+            tiles: ['./tiles/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            minzoom: 13,
+            maxzoom: 18
+          }
+        },
+        layers: [
+          {
+            id: 'custom-tiles-layer',
+            type: 'raster',
+            source: 'custom-tiles',
+            minzoom: 13,
+            maxzoom: 20
+          }
+        ]
+      }
+    });
+
+    map.addControl(new maplibregl.AttributionControl({
+      compact: true,
+      customAttribution: '<a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>'
+    }), 'bottom-right');
+
+    map.addControl(new maplibregl.NavigationControl({
+      showCompass: true,
+      showZoom: true,
+      visualizePitch: true
+    }), 'top-right');
+
+    map.addControl(new maplibregl.ScaleControl({
+      maxWidth: 90,
+      unit: 'metric'
+    }), 'bottom-left');
+
+    const geolocateCtrl = new maplibregl.GeolocateControl({
+      positionOptions: { enableHighAccuracy: true },
+      trackUserLocation: false,
+      showUserLocation: true
+    });
+    map.addControl(geolocateCtrl, 'top-right');
+    geolocateCtrl.on('geolocate', (e) => {
+      setStartLocation([e.coords.longitude, e.coords.latitude], false, '現在地');
+    });
+
+    // =========================================================================
+    // 3. 幾何・カラー補助関数
+    // =========================================================================
+    function haversineMeters(lon1, lat1, lon2, lat2) {
+      const R = 6371000;
+      const toRad = Math.PI / 180;
+      const dLat = (lat2 - lat1) * toRad;
+      const dLon = (lon2 - lon1) * toRad;
+      const a = Math.sin(dLat * 0.5) * Math.sin(dLat * 0.5) +
+                Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) *
+                Math.sin(dLon * 0.5) * Math.sin(dLon * 0.5);
+      return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function getColorAtRatio(ratio, paletteKey = currentPaletteKey) {
+      const stops = PALETTES[paletteKey] || PALETTES.standard;
+      const t = Math.max(0, Math.min(1, ratio));
+      for (let i = 0; i < stops.length - 1; i++) {
+        const s0 = stops[i];
+        const s1 = stops[i + 1];
+        if (t >= s0.t && t <= s1.t) {
+          const localT = (t - s0.t) / (s1.t - s0.t || 1);
+          const r = Math.round(s0.rgb[0] + (s1.rgb[0] - s0.rgb[0]) * localT);
+          const g = Math.round(s0.rgb[1] + (s1.rgb[1] - s0.rgb[1]) * localT);
+          const b = Math.round(s0.rgb[2] + (s1.rgb[2] - s0.rgb[2]) * localT);
+          return `rgb(${r},${g},${b})`;
+        }
+      }
+      const last = stops[stops.length - 1].rgb;
+      return `rgb(${last[0]},${last[1]},${last[2]})`;
+    }
+
+    function getMapLibreColorExpression(paletteKey = currentPaletteKey) {
+      const stops = PALETTES[paletteKey] || PALETTES.standard;
+      const expr = ['interpolate', ['linear'], ['get', 'ratio']];
+      for (const s of stops) {
+        expr.push(s.t, `rgb(${s.rgb[0]},${s.rgb[1]},${s.rgb[2]})`);
+      }
+      return expr;
+    }
+
+    function formatDistShort(meters) {
+      if (meters >= 1000) {
+        const km = meters / 1000;
+        return Number.isInteger(km) ? `${km.toFixed(0)}km` : `${km.toFixed(1).replace(/\.0$/, '')}km`;
+      }
+      return `${Math.round(meters)}m`;
+    }
+
+    function formatMinutes(meters) {
+      const mins = Math.round(meters / walkingPace);
+      return `${mins}分`;
+    }
+
+    function formatBadgeLabelText(dist) {
+      if (labelContentMode === 'both') {
+        return `${formatDistShort(dist)}・${formatMinutes(dist)}`;
+      } else if (labelContentMode === 'dist') {
+        return formatDistShort(dist);
+      } else if (labelContentMode === 'time') {
+        return formatMinutes(dist);
+      }
+      return '';
+    }
+
+    // 点Pから線分ABへの最近傍投影
+    function projectPointToSegment(px, py, ax, ay, bx, by) {
+      const cosLat = Math.cos(py * Math.PI / 180);
+      const dxAB = (bx - ax) * cosLat;
+      const dyAB = (by - ay);
+      const lenSq = dxAB * dxAB + dyAB * dyAB;
+      let t = 0;
+      if (lenSq > 1e-16) {
+        const dxAP = (px - ax) * cosLat;
+        const dyAP = (py - ay);
+        t = (dxAP * dxAB + dyAP * dyAB) / lenSq;
+        t = Math.max(0, Math.min(1, t));
+      }
+      const projLon = ax + t * (bx - ax);
+      const projLat = ay + t * (by - ay);
+      const distMeters = haversineMeters(px, py, projLon, projLat);
+      return { t, lon: projLon, lat: projLat, distMeters };
+    }
+
+    // =========================================================================
+    // 4. 道路グラフ構築・空間インデックス検索・Dijkstra計算
+    // =========================================================================
+    function buildRoadGraph(data) {
+      roadNodes = data.nodes;
+      const rawEdges = data.edges;
+      const n = roadNodes.length;
+      roadAdj = Array.from({ length: n }, () => []);
+      roadEdges = new Array(rawEdges.length);
+      spatialGrid.clear();
+
+      for (let i = 0; i < rawEdges.length; i++) {
+        const u = rawEdges[i][0];
+        const v = rawEdges[i][1];
+        const p1 = roadNodes[u];
+        const p2 = roadNodes[v];
+        const len = haversineMeters(p1[0], p1[1], p2[0], p2[1]);
+        roadEdges[i] = { u, v, len };
+        roadAdj[u].push({ to: v, len, edgeIdx: i });
+        roadAdj[v].push({ to: u, len, edgeIdx: i });
+
+        const minGx = Math.floor(Math.min(p1[0], p2[0]) * GRID_SCALE);
+        const maxGx = Math.floor(Math.max(p1[0], p2[0]) * GRID_SCALE);
+        const minGy = Math.floor(Math.min(p1[1], p2[1]) * GRID_SCALE);
+        const maxGy = Math.floor(Math.max(p1[1], p2[1]) * GRID_SCALE);
+        for (let gx = minGx; gx <= maxGx; gx++) {
+          for (let gy = minGy; gy <= maxGy; gy++) {
+            const key = `${gx}_${gy}`;
+            let cell = spatialGrid.get(key);
+            if (!cell) {
+              cell = [];
+              spatialGrid.set(key, cell);
+            }
+            cell.push(i);
+          }
+        }
+      }
+    }
+
+    function findNearestEdge(lon, lat) {
+      const gx0 = Math.floor(lon * GRID_SCALE);
+      const gy0 = Math.floor(lat * GRID_SCALE);
+      let bestEdgeIdx = -1;
+      let bestProj = null;
+
+      for (let radius = 1; radius <= 6; radius++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          for (let dy = -radius; dy <= radius; dy++) {
+            const cell = spatialGrid.get(`${gx0 + dx}_${gy0 + dy}`);
+            if (!cell) continue;
+            for (let k = 0; k < cell.length; k++) {
+              const edgeIdx = cell[k];
+              const e = roadEdges[edgeIdx];
+              const a = roadNodes[e.u];
+              const b = roadNodes[e.v];
+              const proj = projectPointToSegment(lon, lat, a[0], a[1], b[0], b[1]);
+              if (!bestProj || proj.distMeters < bestProj.distMeters) {
+                bestProj = proj;
+                bestEdgeIdx = edgeIdx;
+              }
+            }
+          }
+        }
+        if (bestProj && bestProj.distMeters < 150) break;
+      }
+
+      if (bestEdgeIdx === -1) return null;
+      return { edgeIdx: bestEdgeIdx, ...bestProj };
+    }
+
+    class MinHeap {
+      constructor() {
+        this.nodes = [];
+        this.dists = [];
+      }
+      push(node, dist) {
+        let i = this.nodes.length;
+        this.nodes.push(node);
+        this.dists.push(dist);
+        while (i > 0) {
+          const p = (i - 1) >> 1;
+          if (this.dists[p] <= dist) break;
+          this.nodes[i] = this.nodes[p];
+          this.dists[i] = this.dists[p];
+          i = p;
+        }
+        this.nodes[i] = node;
+        this.dists[i] = dist;
+      }
+      pop() {
+        const topNode = this.nodes[0];
+        const topDist = this.dists[0];
+        const lastNode = this.nodes.pop();
+        const lastDist = this.dists.pop();
+        const len = this.nodes.length;
+        if (len > 0) {
+          let i = 0;
+          while ((i << 1) + 1 < len) {
+            let left = (i << 1) + 1;
+            let right = left + 1;
+            let smallest = left;
+            if (right < len && this.dists[right] < this.dists[left]) {
+              smallest = right;
+            }
+            if (lastDist <= this.dists[smallest]) break;
+            this.nodes[i] = this.nodes[smallest];
+            this.dists[i] = this.dists[smallest];
+            i = smallest;
+          }
+          this.nodes[i] = lastNode;
+          this.dists[i] = lastDist;
+        }
+        return { node: topNode, dist: topDist };
+      }
+      get size() {
+        return this.nodes.length;
+      }
+    }
+
+    function computeShortestPaths(startLon, startLat) {
+      const nearest = findNearestEdge(startLon, startLat);
+      if (!nearest) return;
+      snapInfo = nearest;
+
+      const n = roadNodes.length;
+      nodeDist = new Float64Array(n);
+      nodeDist.fill(Infinity);
+      nodeParent = new Int32Array(n);
+      nodeParent.fill(-1);
+
+      const e = roadEdges[nearest.edgeIdx];
+      const dToU = nearest.t * e.len;
+      const dToV = (1 - nearest.t) * e.len;
+
+      const heap = new MinHeap();
+      nodeDist[e.u] = dToU;
+      heap.push(e.u, dToU);
+
+      if (dToV < nodeDist[e.v]) {
+        nodeDist[e.v] = dToV;
+        heap.push(e.v, dToV);
+      }
+
+      const limit = maxDistance;
+
+      while (heap.size > 0) {
+        const { node: u, dist: d } = heap.pop();
+        if (d > nodeDist[u] + 1e-5) continue;
+        if (d > limit) continue;
+
+        const neighbors = roadAdj[u];
+        for (let i = 0; i < neighbors.length; i++) {
+          const nb = neighbors[i];
+          const nd = d + nb.len;
+          if (nd < nodeDist[nb.to] && nd <= limit + 250) {
+            nodeDist[nb.to] = nd;
+            nodeParent[nb.to] = u;
+            heap.push(nb.to, nd);
+          }
+        }
+      }
+    }
+
+    // =========================================================================
+    // 5. 道路上のグラデーション線分 ＆ メジャー目盛り・ラベル生成
+    // =========================================================================
+    function getEffectiveLabelInterval() {
+      if (tickIntervalSetting !== 'auto') {
+        return Number(tickIntervalSetting);
+      }
+      const z = map.getZoom();
+      if (z >= 17.3) return 50;
+      if (z >= 15.8) return 100;
+      if (z >= 14.5) return 250;
+      return 500;
+    }
+
+    function updateBadgeImages() {
+      const dpr = Math.min(window.devicePixelRatio || 2, 2);
+      const step = 50;
+      for (let dist = step; dist <= 3000; dist += step) {
+        const badgeId = `badge-${dist}`;
+        const ratio = Math.min(1, dist / maxDistance);
+        const accentColor = getColorAtRatio(ratio);
+        const isMajor = (dist % 500 === 0);
+        const isMid = (dist % 100 === 0);
+
+        const text = formatBadgeLabelText(dist);
+
+        const fontSize = isMajor ? 12 : (isMid ? 11 : 10);
+        const padX = isMajor ? 7 : 6;
+        const padY = isMajor ? 3.5 : 2.5;
+        const dotWidth = 5;
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const fontStr = `${isMajor ? '800' : '700'} ${fontSize * dpr}px -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif`;
+        ctx.font = fontStr;
+        const textWidth = text ? ctx.measureText(text).width / dpr : 0;
+
+        const w = Math.ceil((textWidth + padX * 2 + dotWidth + 4) * dpr);
+        const h = Math.ceil((fontSize + padY * 2 + 4) * dpr);
+        canvas.width = Math.max(8, w);
+        canvas.height = Math.max(8, h);
+
+        if (text) {
+          ctx.scale(dpr, dpr);
+          const logicalW = w / dpr;
+          const logicalH = h / dpr;
+          const r = (logicalH - 2) / 2;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.roundRect(1, 1, logicalW - 2, logicalH - 2, r);
+          ctx.fillStyle = isMajor ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.94)';
+          ctx.fill();
+          ctx.lineWidth = isMajor ? 1.8 : 1.3;
+          ctx.strokeStyle = isMajor ? accentColor : 'rgba(15, 23, 42, 0.65)';
+          ctx.stroke();
+          ctx.restore();
+
+          ctx.beginPath();
+          ctx.arc(padX + 1.5, logicalH / 2, isMajor ? 3.4 : 2.8, 0, Math.PI * 2);
+          ctx.fillStyle = accentColor;
+          ctx.fill();
+
+          ctx.font = `${isMajor ? '800' : '700'} ${fontSize}px -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif`;
+          ctx.fillStyle = isMajor ? '#ffffff' : '#0f172a';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(text, padX + dotWidth + 3, logicalH / 2 + 0.5);
+        }
+
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        if (map.hasImage(badgeId)) {
+          map.updateImage(badgeId, imgData);
+        } else {
+          map.addImage(badgeId, imgData, { pixelRatio: dpr });
+          registeredBadgeIds.add(badgeId);
+        }
+      }
+    }
+
+    function processDirectedSubsegment(ax, ay, bx, by, dA, dB, segFeatures, tickFeatures, labelPointsBucket) {
+      if (dA >= maxDistance) return;
+      const segLen = dB - dA;
+      if (segLen <= 0.05) return;
+
+      let endLon = bx;
+      let endLat = by;
+      let endDist = dB;
+      if (dB > maxDistance) {
+        const clipFrac = (maxDistance - dA) / segLen;
+        endLon = ax + clipFrac * (bx - ax);
+        endLat = ay + clipFrac * (by - ay);
+        endDist = maxDistance;
+      }
+
+      const clippedLen = endDist - dA;
+      const numPieces = Math.max(1, Math.ceil(clippedLen / 30));
+      for (let p = 0; p < numPieces; p++) {
+        const f0 = p / numPieces;
+        const f1 = (p + 1) / numPieces;
+        const x0 = ax + f0 * (endLon - ax);
+        const y0 = ay + f0 * (endLat - ay);
+        const x1 = ax + f1 * (endLon - ax);
+        const y1 = ay + f1 * (endLat - ay);
+        const dMid = dA + ((f0 + f1) * 0.5) * clippedLen;
+        segFeatures.push({
+          type: 'Feature',
+          properties: {
+            dist: Math.round(dMid),
+            ratio: Math.min(1, dMid / maxDistance)
+          },
+          geometry: {
+            type: 'LineString',
+            coordinates: [[x0, y0], [x1, y1]]
+          }
+        });
+      }
+
+      const cosLat = Math.cos(ay * Math.PI / 180);
+      const dxMeters = (endLon - ax) * cosLat * 111320;
+      const dyMeters = (endLat - ay) * 110540;
+      const normLen = Math.hypot(dxMeters, dyMeters);
+      if (normLen < 0.05) return;
+      const nxLon = (-dyMeters / normLen) / (111320 * cosLat);
+      const nyLat = (dxMeters / normLen) / 110540;
+
+      const firstTick = Math.ceil((dA + 0.01) / 10) * 10;
+      for (let tickDist = firstTick; tickDist <= endDist; tickDist += 10) {
+        if (tickDist <= 0 || tickDist > maxDistance) continue;
+        const frac = (tickDist - dA) / clippedLen;
+        const tx = ax + frac * (endLon - ax);
+        const ty = ay + frac * (endLat - ay);
+
+        let tickLevel = 1; // 10m小目盛り
+        let halfWidthMeters = 3.2;
+        if (tickDist % 500 === 0) {
+          tickLevel = 4; // 500m特大目盛り
+          halfWidthMeters = 10.5;
+        } else if (tickDist % 100 === 0) {
+          tickLevel = 3; // 100m大目盛り
+          halfWidthMeters = 7.5;
+        } else if (tickDist % 50 === 0) {
+          tickLevel = 2; // 50m中目盛り
+          halfWidthMeters = 5.2;
+        }
+
+        const ratio = Math.min(1, tickDist / maxDistance);
+        tickFeatures.push({
+          type: 'Feature',
+          properties: {
+            dist: tickDist,
+            level: tickLevel,
+            ratio: ratio
+          },
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [tx - nxLon * halfWidthMeters, ty - nyLat * halfWidthMeters],
+              [tx + nxLon * halfWidthMeters, ty + nyLat * halfWidthMeters]
+            ]
+          }
+        });
+
+        if (tickDist % 50 === 0) {
+          labelPointsBucket.push({
+            lon: tx,
+            lat: ty,
+            dist: tickDist,
+            ratio: ratio
+          });
+        }
+      }
+    }
+
+    function renderRoadScaleLayers() {
+      if (!snapInfo || !nodeDist || !map.getSource('road-scale-segments')) return;
+
+      const segFeatures = [];
+      const tickFeatures = [];
+      const labelCandidates = [];
+
+      const startEdgeIdx = snapInfo.edgeIdx;
+      const startEdge = roadEdges[startEdgeIdx];
+      const u0 = roadNodes[startEdge.u];
+      const v0 = roadNodes[startEdge.v];
+      const dToU = snapInfo.t * startEdge.len;
+      const dToV = (1 - snapInfo.t) * startEdge.len;
+
+      if (dToU > 0.05) {
+        processDirectedSubsegment(
+          snapInfo.lon, snapInfo.lat, u0[0], u0[1],
+          0, dToU, segFeatures, tickFeatures, labelCandidates
+        );
+      }
+      if (dToV > 0.05) {
+        processDirectedSubsegment(
+          snapInfo.lon, snapInfo.lat, v0[0], v0[1],
+          0, dToV, segFeatures, tickFeatures, labelCandidates
+        );
+      }
+
+      for (let i = 0; i < roadEdges.length; i++) {
+        if (i === startEdgeIdx) continue;
+        const e = roadEdges[i];
+        const du = nodeDist[e.u];
+        const dv = nodeDist[e.v];
+        if (du >= maxDistance && dv >= maxDistance) continue;
+        if (du === Infinity && dv === Infinity) continue;
+
+        const pU = roadNodes[e.u];
+        const pV = roadNodes[e.v];
+
+        if (Math.abs(dv - du) >= e.len - 0.1) {
+          if (du <= dv) {
+            processDirectedSubsegment(pU[0], pU[1], pV[0], pV[1], du, du + e.len, segFeatures, tickFeatures, labelCandidates);
+          } else {
+            processDirectedSubsegment(pV[0], pV[1], pU[0], pU[1], dv, dv + e.len, segFeatures, tickFeatures, labelCandidates);
+          }
+        } else {
+          const xFromU = Math.max(0, Math.min(e.len, (dv - du + e.len) * 0.5));
+          const fracM = xFromU / (e.len || 1);
+          const mx = pU[0] + fracM * (pV[0] - pU[0]);
+          const my = pU[1] + fracM * (pV[1] - pU[1]);
+          const dMid = du + xFromU;
+          if (xFromU > 0.05) {
+            processDirectedSubsegment(pU[0], pU[1], mx, my, du, dMid, segFeatures, tickFeatures, labelCandidates);
+          }
+          if (e.len - xFromU > 0.05) {
+            processDirectedSubsegment(pV[0], pV[1], mx, my, dv, dMid, segFeatures, tickFeatures, labelCandidates);
+          }
+        }
+      }
+
+      const labelFeatures = [];
+      const seenGrid = new Set();
+      labelCandidates.sort((a, b) => {
+        const prioA = (a.dist % 1000 === 0) ? 1 : (a.dist % 500 === 0) ? 2 : (a.dist % 250 === 0) ? 3 : (a.dist % 100 === 0) ? 4 : 5;
+        const prioB = (b.dist % 1000 === 0) ? 1 : (b.dist % 500 === 0) ? 2 : (b.dist % 250 === 0) ? 3 : (b.dist % 100 === 0) ? 4 : 5;
+        return prioA - prioB;
+      });
+
+      for (let i = 0; i < labelCandidates.length; i++) {
+        const c = labelCandidates[i];
+        const cellKey = `${c.dist}_${Math.round(c.lon * 2200)}_${Math.round(c.lat * 2200)}`;
+        if (seenGrid.has(cellKey)) continue;
+        seenGrid.add(cellKey);
+
+        const priority = (c.dist % 1000 === 0) ? 1 : (c.dist % 500 === 0) ? 2 : (c.dist % 250 === 0) ? 3 : (c.dist % 100 === 0) ? 4 : 5;
+        labelFeatures.push({
+          type: 'Feature',
+          properties: {
+            dist: c.dist,
+            ratio: c.ratio,
+            badgeId: `badge-${c.dist}`,
+            priority: priority
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: [c.lon, c.lat]
+          }
+        });
+      }
+
+      cachedSegFeatures = segFeatures;
+      cachedTickFeatures = tickFeatures;
+      cachedLabelFeatures = labelFeatures;
+
+      const connectorFeatures = [
+        {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: [startPoint, [snapInfo.lon, snapInfo.lat]]
+          }
+        }
+      ];
+
+      map.getSource('road-scale-segments').setData({
+        type: 'FeatureCollection',
+        features: segFeatures
+      });
+      map.getSource('road-scale-ticks').setData({
+        type: 'FeatureCollection',
+        features: tickFeatures
+      });
+      map.getSource('road-scale-labels').setData({
+        type: 'FeatureCollection',
+        features: labelFeatures
+      });
+      map.getSource('start-connector').setData({
+        type: 'FeatureCollection',
+        features: connectorFeatures
+      });
+
+      applyScaleVisibilityAndFilters();
+    }
+
+    function getMinTickLevelForZoom(z) {
+      if (z >= 17.2) return 1; // 10m刻みまで表示
+      if (z >= 15.8) return 2; // 50m刻みまで表示
+      if (z >= 14.3) return 3; // 100m刻みまで表示
+      return 4;                // 500m刻みのみ表示
+    }
+
+    function applyTickZoomFilter() {
+      const minLvl = getMinTickLevelForZoom(map.getZoom());
+      const f = ['>=', ['get', 'level'], minLvl];
+      if (map.getLayer('road-scale-ticks-casing-layer')) {
+        map.setFilter('road-scale-ticks-casing-layer', f);
+      }
+      if (map.getLayer('road-scale-ticks-layer')) {
+        map.setFilter('road-scale-ticks-layer', f);
+      }
+    }
+
+    function applyScaleVisibilityAndFilters() {
+      const scaleLayerIds = [
+        'road-scale-casing-layer',
+        'road-scale-line-layer',
+        'road-scale-ticks-casing-layer',
+        'road-scale-ticks-layer',
+        'start-connector-layer'
+      ];
+      const vis = showScaleOverlay ? 'visible' : 'none';
+      for (const lid of scaleLayerIds) {
+        if (map.getLayer(lid)) {
+          map.setLayoutProperty(lid, 'visibility', vis);
+        }
+      }
+
+      if (!map.getLayer('road-scale-labels-layer')) return;
+      if (!showScaleOverlay || labelContentMode === 'none') {
+        map.setLayoutProperty('road-scale-labels-layer', 'visibility', 'none');
+      } else {
+        map.setLayoutProperty('road-scale-labels-layer', 'visibility', 'visible');
+        const interval = getEffectiveLabelInterval();
+        map.setFilter('road-scale-labels-layer', ['==', ['%', ['get', 'dist'], interval], 0]);
+      }
+
+      const interval = getEffectiveLabelInterval();
+      const tickLabelEl = document.getElementById('tickIntervalLabel');
+      if (tickIntervalSetting === 'auto') {
+        tickLabelEl.textContent = `自動 (${interval}m)`;
+      } else {
+        tickLabelEl.textContent = `${interval}m 固定`;
+      }
+    }
+
+    // =========================================================================
+    // 6. 特定地点までの最短ルート計測（メジャー強調表示）
+    // =========================================================================
+    function updateTargetMeasureRoute() {
+      if (!targetPoint || !snapInfo || !nodeDist || !map.getSource('target-route')) return;
+
+      const targetSnap = findNearestEdge(targetPoint[0], targetPoint[1]);
+      if (!targetSnap) return;
+
+      const te = roadEdges[targetSnap.edgeIdx];
+      const dViaU = nodeDist[te.u] + targetSnap.t * te.len;
+      const dViaV = nodeDist[te.v] + (1 - targetSnap.t) * te.len;
+      const bestDist = Math.min(dViaU, dViaV);
+
+      const banner = document.getElementById('measureBanner');
+      const mainText = document.getElementById('measureMainText');
+      const subText = document.getElementById('measureSubText');
+
+      if (!Number.isFinite(bestDist)) {
+        targetRouteCoords = null;
+        targetRouteDist = null;
+        banner.classList.add('visible');
+        mainText.textContent = '⚠️ 到達ルートが見つかりません';
+        subText.textContent = '徒歩ネットワーク外の地点です';
+        map.getSource('target-route').setData({ type: 'FeatureCollection', features: [] });
+        return;
+      }
+
+      const routeCoords = [[targetSnap.lon, targetSnap.lat]];
+      let curr = (dViaU <= dViaV) ? te.u : te.v;
+      let safety = 0;
+      while (curr !== -1 && safety < 10000) {
+        routeCoords.push(roadNodes[curr]);
+        curr = nodeParent[curr];
+        safety++;
+      }
+      routeCoords.push([snapInfo.lon, snapInfo.lat]);
+      routeCoords.reverse();
+
+      targetRouteCoords = routeCoords;
+      targetRouteDist = bestDist;
+
+      map.getSource('target-route').setData({
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            properties: {},
+            geometry: {
+              type: 'LineString',
+              coordinates: routeCoords
+            }
+          }
+        ]
+      });
+
+      const roundedDist = Math.round(bestDist);
+      const mins = Math.max(1, Math.round(bestDist / walkingPace));
+      banner.classList.add('visible');
+      const titlePrefix = targetPointName ? `🎯 ${targetPointName}: ` : '📏 道のり: ';
+      mainText.textContent = `${titlePrefix}${roundedDist.toLocaleString()} m（約 ${mins} 分）`;
+      subText.textContent = `計算ペース: ${currentPaceLabel}（直線距離: ${Math.round(haversineMeters(startPoint[0], startPoint[1], targetPoint[0], targetPoint[1]))}m）`;
+
+      if (targetMarker) {
+        const badge = targetMarker.getElement().querySelector('.target-pin-badge');
+        if (badge) {
+          badge.textContent = targetPointName
+            ? `🎯 ${targetPointName} (${roundedDist}m・${mins}分)`
+            : `🎯 ${roundedDist}m (${mins}分)`;
+        }
+      }
+    }
+
+    function setTargetMeasurePoint(coords, name = null) {
+      targetPoint = coords;
+      targetPointName = name;
+      if (!targetMarker) {
+        const el = document.createElement('div');
+        el.className = 'target-pin-wrapper';
+        el.innerHTML = `
+          <div class="target-pin-badge">🎯 計測地点</div>
+          <div class="target-pin-icon">🎯</div>
+        `;
+        targetMarker = new maplibregl.Marker({ element: el, draggable: true, anchor: 'bottom' })
+          .setLngLat(coords)
+          .addTo(map);
+        targetMarker.on('dragend', () => {
+          const ll = targetMarker.getLngLat();
+          targetPoint = [ll.lng, ll.lat];
+          targetPointName = null;
+          updateTargetMeasureRoute();
+        });
+      } else {
+        targetMarker.setLngLat(coords);
+      }
+      updateTargetMeasureRoute();
+    }
+
+    function clearTargetMeasure() {
+      targetPoint = null;
+      targetPointName = null;
+      targetRouteCoords = null;
+      targetRouteDist = null;
+      if (targetMarker) {
+        targetMarker.remove();
+        targetMarker = null;
+      }
+      if (map.getSource('target-route')) {
+        map.getSource('target-route').setData({ type: 'FeatureCollection', features: [] });
+      }
+      document.getElementById('measureBanner').classList.remove('visible');
+    }
+
+    // =========================================================================
+    // 7. スタートマーカー＆UI更新処理
+    // =========================================================================
+    function createOrUpdateStartMarker(coords) {
+      if (!startMarker) {
+        const el = document.createElement('div');
+        el.className = 'start-pin-wrapper';
+        el.title = 'ドラッグして自宅や避難所の入り口に微調整できます';
+        el.innerHTML = `
+          <div class="start-pin-badge">🏠 スタート地点 (0m)</div>
+          <div class="start-pin-icon">🚶</div>
+        `;
+        startMarker = new maplibregl.Marker({ element: el, draggable: true, anchor: 'bottom' })
+          .setLngLat(coords)
+          .addTo(map);
+
+        startMarker.on('dragend', () => {
+          const ll = startMarker.getLngLat();
+          setStartLocation([ll.lng, ll.lat], false, null);
+        });
+      } else {
+        startMarker.setLngLat(coords);
+      }
+      const badge = startMarker.getElement().querySelector('.start-pin-badge');
+      if (badge) {
+        badge.textContent = startPointName ? `🏠 ${startPointName} (0m)` : '🏠 スタート地点 (0m)';
+      }
+    }
+
+    function setStartLocation(coords, fly = false, name = null) {
+      startPoint = coords;
+      startPointName = name;
+      createOrUpdateStartMarker(coords);
+      computeShortestPaths(coords[0], coords[1]);
+      renderRoadScaleLayers();
+      if (targetPoint) {
+        updateTargetMeasureRoute();
+      }
+      if (fly) {
+        map.flyTo({ center: coords, zoom: Math.max(map.getZoom(), 17), duration: 650 });
+      }
+    }
+
+    function updateLegendUI() {
+      const stops = PALETTES[currentPaletteKey] || PALETTES.standard;
+      const cssGrad = stops.map(s => `rgb(${s.rgb[0]},${s.rgb[1]},${s.rgb[2]}) ${(s.t * 100).toFixed(0)}%`).join(', ');
+      document.getElementById('legendBar').style.background = `linear-gradient(90deg, ${cssGrad})`;
+
+      const topEl = document.getElementById('legendLabelsTop');
+      const bottomEl = document.getElementById('legendLabelsBottom');
+      const fractions = [0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1];
+
+      topEl.innerHTML = fractions.map(f => {
+        const d = Math.round(maxDistance * f);
+        return `<span>${ d === 0 ? '0m' : formatDistShort(d) }</span>`;
+      }).join('');
+
+      bottomEl.innerHTML = fractions.map(f => {
+        const d = Math.round(maxDistance * f);
+        const m = Math.round(d / walkingPace);
+        return `<span>${ m }分</span>`;
+      }).join('');
+
+      document.getElementById('currentPaceBadge').textContent = currentPaceLabel;
+      document.getElementById('currentMaxDistBadge').textContent = `・${(maxDistance / 1000).toFixed(1)}km`;
+      const kmh = (walkingPace * 60 / 1000).toFixed(1);
+      document.getElementById('paceDetailLabel').textContent = `${walkingPace} m/分（${kmh} km/h）`;
+      document.getElementById('maxDistDetailLabel').textContent = `${maxDistance.toLocaleString()} m（約${Math.round(maxDistance / walkingPace)}分）`;
+    }
+
+    // =========================================================================
+    // 8. ユーザー設定変更ハンドラ（グラデーションON/OFF含む）
+    // =========================================================================
+    function toggleSettingsDrawer(forceOpen = null) {
+      const drawer = document.getElementById('settingsDrawer');
+      const arrow = document.getElementById('settingsArrow');
+      const isOpen = forceOpen !== null ? forceOpen : !drawer.classList.contains('open');
+      if (isOpen) {
+        drawer.classList.add('open');
+        arrow.textContent = '▼';
+      } else {
+        drawer.classList.remove('open');
+        arrow.textContent = '▲';
+      }
+    }
+
+    function setTapMode(mode) {
+      tapMode = mode;
+      document.getElementById('btnModeStart').classList.toggle('active', mode === 'start');
+      const btnMeasure = document.getElementById('btnModeMeasure');
+      btnMeasure.classList.toggle('active', mode === 'measure');
+      btnMeasure.classList.toggle('measure-active', mode === 'measure');
+    }
+
+    function setScaleOverlay(enable) {
+      showScaleOverlay = Boolean(enable);
+      const topBtn = document.getElementById('btnToggleScale');
+      topBtn.classList.toggle('active', showScaleOverlay);
+      topBtn.textContent = showScaleOverlay ? '🌈 スケールON' : '🗺️ 地図のみ';
+
+      document.querySelectorAll('#scaleVisChipGroup .chip').forEach(btn => {
+        const isOnChip = btn.dataset.vis === 'on';
+        btn.classList.toggle('active', isOnChip === showScaleOverlay);
+      });
+
+      document.getElementById('scaleVisStatusLabel').textContent = showScaleOverlay ? '表示中 (ON)' : '非表示 (地図のみ)';
+      document.getElementById('legendContainer').classList.toggle('dimmed', !showScaleOverlay);
+
+      if (startMarker) {
+        startMarker.getElement().style.display = showScaleOverlay ? 'flex' : 'none';
+      }
+
+      applyScaleVisibilityAndFilters();
+    }
+
+    function toggleScaleOverlay() {
+      setScaleOverlay(!showScaleOverlay);
+    }
+
+    function setWalkingPace(pace, labelText) {
+      walkingPace = Number(pace);
+      currentPaceLabel = labelText || `🚶 ${walkingPace}m/分`;
+      document.getElementById('paceSlider').value = walkingPace;
+
+      document.querySelectorAll('[data-pace]').forEach(btn => {
+        btn.classList.toggle('active', Number(btn.dataset.pace) === walkingPace);
+      });
+
+      updateLegendUI();
+      updateBadgeImages();
+      map.triggerRepaint();
+      if (targetPoint) updateTargetMeasureRoute();
+    }
+
+    function onPaceSliderInput(val) {
+      const p = Number(val);
+      let label = `🚶 ${p}m/分`;
+      if (p === 80) label = '🚶 一般 80m/分';
+      else if (p === 60) label = '👵 高齢・子 60m/分';
+      else if (p === 50) label = '💧 水運搬 50m/分';
+      else if (p === 40) label = '🐢 重荷物 40m/分';
+      setWalkingPace(p, label);
+    }
+
+    function setMaxDistance(dist) {
+      maxDistance = Number(dist);
+      document.querySelectorAll('#maxDistChipGroup .chip').forEach(btn => {
+        btn.classList.toggle('active', Number(btn.dataset.dist) === maxDistance);
+      });
+      updateLegendUI();
+      updateBadgeImages();
+      computeShortestPaths(startPoint[0], startPoint[1]);
+      renderRoadScaleLayers();
+      if (targetPoint) updateTargetMeasureRoute();
+    }
+
+    function setTickInterval(interval) {
+      tickIntervalSetting = interval;
+      document.querySelectorAll('#tickIntervalChipGroup .chip').forEach(btn => {
+        btn.classList.toggle('active', String(btn.dataset.interval) === String(interval));
+      });
+      applyScaleVisibilityAndFilters();
+    }
+
+    function setLabelContent(mode) {
+      labelContentMode = mode;
+      document.querySelectorAll('#labelContentChipGroup .chip').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.content === mode);
+      });
+      updateBadgeImages();
+      applyScaleVisibilityAndFilters();
+      map.triggerRepaint();
+    }
+
+    function setColorPalette(paletteKey) {
+      currentPaletteKey = paletteKey;
+      document.querySelectorAll('#paletteChipGroup .chip').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.palette === paletteKey);
+      });
+
+      const colorExpr = getMapLibreColorExpression(paletteKey);
+      if (map.getLayer('road-scale-line-layer')) {
+        map.setPaintProperty('road-scale-line-layer', 'line-color', colorExpr);
+      }
+      if (map.getLayer('road-scale-ticks-layer')) {
+        map.setPaintProperty('road-scale-ticks-layer', 'line-color', [
+          'case',
+          ['>=', ['get', 'level'], 3], '#0f172a',
+          colorExpr
+        ]);
+      }
+      updateLegendUI();
+      updateBadgeImages();
+      map.triggerRepaint();
+    }
+
+    function toggleFacilitiesLayer() {
+      showFacilities = !showFacilities;
+      const btn = document.getElementById('btnToggleFacilities');
+      btn.classList.toggle('active', showFacilities);
+      const vis = showFacilities ? 'visible' : 'none';
+      if (map.getLayer('facilities-circle-layer')) {
+        map.setLayoutProperty('facilities-circle-layer', 'visibility', vis);
+      }
+    }
+
+    function onSelectFacility(val) {
+      if (!val) return;
+      const idx = Number(val);
+      const f = facilitiesData[idx];
+      if (!f) return;
+      toggleSettingsDrawer(false);
+      setStartLocation(f.coords, true, `${f.name}`);
+    }
+
+    function moveStartToCurrentLocation() {
+      if (!('geolocation' in navigator)) {
+        alert('お使いのブラウザでは位置情報が利用できません。');
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          toggleSettingsDrawer(false);
+          setStartLocation([pos.coords.longitude, pos.coords.latitude], true, '現在地');
+        },
+        () => {
+          alert('現在地を取得できませんでした。位置情報の許可設定をご確認ください。');
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
+
+    // =========================================================================
+    // 9. 出発地から東西南北 各2km（4km×4km）をズーム18相当でPDF/PNG出力
+    // =========================================================================
+    let isExporting = false;
+    let cancelExportRequested = false;
+
+    // タイル存在範囲（不要な404リクエストを防止）
+    const Z18_BOUNDS = { minX: 232584, maxX: 232684, minY: 103156, maxY: 103215 };
+    const Z13_BOUNDS = { minX: 7268, maxX: 7271, minY: 3223, maxY: 3225 };
+
+    function openExportModal() {
+      document.getElementById('exportModal').classList.add('open');
+      document.getElementById('exportProgressBox').classList.remove('active');
+      document.getElementById('btnExportPNG').disabled = false;
+      document.getElementById('btnExportPDF').disabled = false;
+      document.getElementById('btnCloseExportModal').textContent = '閉じる';
+    }
+
+    function closeExportModal() {
+      if (isExporting) {
+        cancelExportRequested = true;
+        isExporting = false;
+      }
+      document.getElementById('exportModal').classList.remove('open');
+    }
+
+    function lonToWorldPxZ18(lon) {
+      const worldSize = 256 * Math.pow(2, 18);
+      return ((lon + 180) / 360) * worldSize;
+    }
+
+    function latToWorldPxZ18(lat) {
+      const worldSize = 256 * Math.pow(2, 18);
+      const sinLat = Math.sin(lat * Math.PI / 180);
+      const y = 0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI);
+      return y * worldSize;
+    }
+
+    function loadTileImage(url) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = url;
+      });
+    }
+
+    // 端末のCanvas上限を自動判定（PCでは8192pxのZ18等倍、モバイル上限時は4096pxへ自動調整）
+    function createExportCanvas(idealSide) {
+      const candidates = [idealSide, 6144, 4096];
+      for (const side of candidates) {
+        try {
+          const c = document.createElement('canvas');
+          c.width = side;
+          c.height = side;
+          const ctx = c.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, 1, 1);
+            if (c.width === side) return { canvas: c, ctx, side };
+          }
+        } catch (e) {}
+      }
+      const fallback = document.createElement('canvas');
+      fallback.width = 4096;
+      fallback.height = 4096;
+      return { canvas: fallback, ctx: fallback.getContext('2d'), side: 4096 };
+    }
+
+    async function startHighResExport(format = 'png') {
+      if (isExporting) return;
+      isExporting = true;
+      cancelExportRequested = false;
+
+      const progBox = document.getElementById('exportProgressBox');
+      const progText = document.getElementById('exportProgressText');
+      const progBar = document.getElementById('exportProgressBar');
+      const btnPNG = document.getElementById('btnExportPNG');
+      const btnPDF = document.getElementById('btnExportPDF');
+      const btnClose = document.getElementById('btnCloseExportModal');
+
+      progBox.classList.add('active');
+      btnPNG.disabled = true;
+      btnPDF.disabled = true;
+      btnClose.textContent = '中止する';
+
+      const setProgress = (msg, pct) => {
+        progText.textContent = msg;
+        progBar.style.width = `${pct}%`;
+      };
+
+      try {
+        // 1. 出発地から東西南北 各2,000m (4km×4km) のZ18ピクセル座標範囲を算出
+        const centerLon = startPoint[0];
+        const centerLat = startPoint[1];
+        const metersPerPxZ18 = (40075016.686 * Math.cos(centerLat * Math.PI / 180)) / (256 * Math.pow(2, 18));
+        const halfSpanZ18Px = 2000 / metersPerPxZ18; // 約4,125 px (片側2km)
+        const fullSpanZ18Px = halfSpanZ18Px * 2;     // 約8,251 px (全体4km)
+
+        const centerWorldX = lonToWorldPxZ18(centerLon);
+        const centerWorldY = latToWorldPxZ18(centerLat);
+        const minWorldX = centerWorldX - halfSpanZ18Px;
+        const maxWorldX = centerWorldX + halfSpanZ18Px;
+        const minWorldY = centerWorldY - halfSpanZ18Px;
+        const maxWorldY = centerWorldY + halfSpanZ18Px;
+
+        const idealCanvasSide = Math.min(8192, Math.round(fullSpanZ18Px));
+        const { canvas, ctx, side: canvasSide } = createExportCanvas(idealCanvasSide);
+        const scale = canvasSide / fullSpanZ18Px; // Z18ピクセル -> 出力Canvasピクセル係数
+
+        // 背景を白で初期化
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvasSide, canvasSide);
+
+        const toCanvasX = (lon) => (lonToWorldPxZ18(lon) - minWorldX) * scale;
+        const toCanvasY = (lat) => (latToWorldPxZ18(lat) - minWorldY) * scale;
+
+        const minTx = Math.floor(minWorldX / 256);
+        const maxTx = Math.floor(maxWorldX / 256);
+        const minTy = Math.floor(minWorldY / 256);
+        const maxTy = Math.floor(maxWorldY / 256);
+
+        // 2. Z18範囲外の周辺部も欠けないよう、まずZ13ベースタイルを下敷き描画
+        setProgress('広域背景タイルを準備中...', 5);
+        const minTx13 = Math.floor(minTx / 32);
+        const maxTx13 = Math.floor(maxTx / 32);
+        const minTy13 = Math.floor(minTy / 32);
+        const maxTy13 = Math.floor(maxTy / 32);
+        for (let tx13 = minTx13; tx13 <= maxTx13; tx13++) {
+          for (let ty13 = minTy13; ty13 <= maxTy13; ty13++) {
+            if (tx13 >= Z13_BOUNDS.minX && tx13 <= Z13_BOUNDS.maxX &&
+                ty13 >= Z13_BOUNDS.minY && ty13 <= Z13_BOUNDS.maxY) {
+              const img13 = await loadTileImage(`./tiles/13/${tx13}/${ty13}.png`);
+              if (img13) {
+                const tileWorldX = tx13 * 32 * 256;
+                const tileWorldY = ty13 * 32 * 256;
+                const tileSpan = 32 * 256 * scale;
+                const dx = (tileWorldX - minWorldX) * scale;
+                const dy = (tileWorldY - minWorldY) * scale;
+                ctx.drawImage(img13, dx, dy, tileSpan, tileSpan);
+              }
+            }
+          }
+        }
+
+        // 3. Z18タイル一覧を作成し並列バッチで高速描画
+        const z18Tasks = [];
+        for (let ty = minTy; ty <= maxTy; ty++) {
+          for (let tx = minTx; tx <= maxTx; tx++) {
+            if (tx >= Z18_BOUNDS.minX && tx <= Z18_BOUNDS.maxX &&
+                ty >= Z18_BOUNDS.minY && ty <= Z18_BOUNDS.maxY) {
+              z18Tasks.push({ tx, ty });
+            }
+          }
+        }
+
+        const totalTiles = z18Tasks.length;
+        const BATCH_SIZE = 32;
+        let loadedCount = 0;
+
+        for (let i = 0; i < totalTiles; i += BATCH_SIZE) {
+          if (cancelExportRequested) return;
+          const batch = z18Tasks.slice(i, i + BATCH_SIZE);
+          const imgs = await Promise.all(
+            batch.map(t => loadTileImage(`./tiles/18/${t.tx}/${t.ty}.png`))
+          );
+
+          for (let j = 0; j < batch.length; j++) {
+            const img = imgs[j];
+            if (!img) continue;
+            const { tx, ty } = batch[j];
+            const dx = (tx * 256 - minWorldX) * scale;
+            const dy = (ty * 256 - minWorldY) * scale;
+            const dw = 256 * scale + 0.4; // タイル境界の隙間防止
+            ctx.drawImage(img, dx, dy, dw, dw);
+          }
+
+          loadedCount += batch.length;
+          const pct = Math.min(75, Math.round(10 + (loadedCount / Math.max(1, totalTiles)) * 65));
+          setProgress(`Z18高解像度タイルを描画中... ${loadedCount} / ${totalTiles}枚`, pct);
+        }
+
+        if (cancelExportRequested) return;
+
+        // 4. 計算結果（道路グラデーション・メジャー目盛り・ラベル）の描画
+        if (showScaleOverlay && cachedSegFeatures.length > 0) {
+          setProgress('道路スケール・グラデーションを描画中...', 82);
+          await new Promise(r => setTimeout(r, 20));
+
+          // 4-1. 道路ケーシング（外枠）
+          ctx.save();
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.strokeStyle = 'rgba(15, 23, 42, 0.55)';
+          ctx.lineWidth = Math.max(3, 11 * scale);
+          ctx.beginPath();
+          for (let i = 0; i < cachedSegFeatures.length; i++) {
+            const coords = cachedSegFeatures[i].geometry.coordinates;
+            ctx.moveTo(toCanvasX(coords[0][0]), toCanvasY(coords[0][1]));
+            ctx.lineTo(toCanvasX(coords[1][0]), toCanvasY(coords[1][1]));
+          }
+          ctx.stroke();
+          ctx.restore();
+
+          // 4-2. 道路グラデーション本体
+          ctx.save();
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.lineWidth = Math.max(2, 7.5 * scale);
+          for (let i = 0; i < cachedSegFeatures.length; i++) {
+            const f = cachedSegFeatures[i];
+            const coords = f.geometry.coordinates;
+            ctx.strokeStyle = getColorAtRatio(f.properties.ratio);
+            ctx.beginPath();
+            ctx.moveTo(toCanvasX(coords[0][0]), toCanvasY(coords[0][1]));
+            ctx.lineTo(toCanvasX(coords[1][0]), toCanvasY(coords[1][1]));
+            ctx.stroke();
+          }
+          ctx.restore();
+
+          // 4-3. メジャー目盛り線（Z18なので10m/50m/100m/500mすべて描画）
+          ctx.save();
+          ctx.lineCap = 'butt';
+          for (let i = 0; i < cachedTickFeatures.length; i++) {
+            const tf = cachedTickFeatures[i];
+            const lvl = tf.properties.level;
+            const coords = tf.geometry.coordinates;
+            const x0 = toCanvasX(coords[0][0]);
+            const y0 = toCanvasY(coords[0][1]);
+            const x1 = toCanvasX(coords[1][0]);
+            const y1 = toCanvasY(coords[1][1]);
+
+            // 白縁取り
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+            ctx.lineWidth = (lvl === 4 ? 5.5 : lvl === 3 ? 4.2 : lvl === 2 ? 3.2 : 2.2) * scale;
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+            ctx.stroke();
+
+            // 目盛り本体
+            ctx.strokeStyle = lvl >= 3 ? '#0f172a' : getColorAtRatio(tf.properties.ratio);
+            ctx.lineWidth = (lvl === 4 ? 3.2 : lvl === 3 ? 2.4 : lvl === 2 ? 1.8 : 1.2) * scale;
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+            ctx.stroke();
+          }
+          ctx.restore();
+
+          // 4-4. 玄関〜道路スナップ点の破線
+          if (snapInfo) {
+            ctx.save();
+            ctx.strokeStyle = '#059669';
+            ctx.lineWidth = Math.max(2, 3.5 * scale);
+            ctx.setLineDash([6 * scale, 6 * scale]);
+            ctx.beginPath();
+            ctx.moveTo(toCanvasX(startPoint[0]), toCanvasY(startPoint[1]));
+            ctx.lineTo(toCanvasX(snapInfo.lon), toCanvasY(snapInfo.lat));
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+
+        // 5. 計測ルート強調線（存在する場合）
+        if (targetRouteCoords && targetRouteCoords.length >= 2) {
+          ctx.save();
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = Math.max(5, 12 * scale);
+          ctx.beginPath();
+          targetRouteCoords.forEach((pt, idx) => {
+            if (idx === 0) ctx.moveTo(toCanvasX(pt[0]), toCanvasY(pt[1]));
+            else ctx.lineTo(toCanvasX(pt[0]), toCanvasY(pt[1]));
+          });
+          ctx.stroke();
+
+          ctx.strokeStyle = '#fde047';
+          ctx.lineWidth = Math.max(3, 7 * scale);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // 6. 避難所・給水拠点アイコン（表示ON時）
+        if (showFacilities && facilitiesData.length > 0) {
+          ctx.save();
+          const r = Math.max(8, 13 * scale);
+          for (const f of facilitiesData) {
+            const fx = toCanvasX(f.coords[0]);
+            const fy = toCanvasY(f.coords[1]);
+            if (fx < -r || fx > canvasSide + r || fy < -r || fy > canvasSide + r) continue;
+            let bg = '#059669';
+            let emoji = '🏫';
+            if (f.category === '給水拠点') { bg = '#0284c7'; emoji = '💧'; }
+            else if (f.category === '広域避難場所' || f.category === 'いっとき避難場所') { bg = '#16a34a'; emoji = '🌳'; }
+            else if (f.category === '福祉避難所') { bg = '#db2777'; emoji = '🏥'; }
+
+            ctx.beginPath();
+            ctx.arc(fx, fy, r, 0, Math.PI * 2);
+            ctx.fillStyle = bg;
+            ctx.fill();
+            ctx.lineWidth = Math.max(1.5, 2.5 * scale);
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+
+            ctx.font = `${Math.round(r * 1.1)}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(emoji, fx, fy + 1);
+          }
+          ctx.restore();
+        }
+
+        // 7. 距離・所要時間バッジ（重なり回避付き、Z18では100m間隔またはユーザー設定間隔で描画）
+        if (showScaleOverlay && labelContentMode !== 'none' && cachedLabelFeatures.length > 0) {
+          setProgress('距離・時間ラベルを配置中...', 88);
+          const exportInterval = tickIntervalSetting === 'auto' ? 100 : Number(tickIntervalSetting);
+          const placedBoxes = [];
+          const badgeScale = Math.max(0.85, scale * 1.25);
+
+          ctx.save();
+          for (let i = 0; i < cachedLabelFeatures.length; i++) {
+            const lf = cachedLabelFeatures[i];
+            const dist = lf.properties.dist;
+            if (dist % exportInterval !== 0) continue;
+
+            const lx = toCanvasX(lf.geometry.coordinates[0]);
+            const ly = toCanvasY(lf.geometry.coordinates[1]);
+            if (lx < 40 || lx > canvasSide - 40 || ly < 40 || ly > canvasSide - 40) continue;
+
+            const isMajor = (dist % 500 === 0);
+            const text = formatBadgeLabelText(dist);
+            if (!text) continue;
+
+            const fontSize = Math.round((isMajor ? 14 : 12) * badgeScale);
+            ctx.font = `${isMajor ? '800' : '700'} ${fontSize}px -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif`;
+            const tw = ctx.measureText(text).width;
+            const bw = tw + 22 * badgeScale;
+            const bh = fontSize + 10 * badgeScale;
+            const box = { x0: lx - bw / 2 - 6, y0: ly - bh / 2 - 6, x1: lx + bw / 2 + 6, y1: ly + bh / 2 + 6 };
+
+            let overlaps = false;
+            for (let k = 0; k < placedBoxes.length; k++) {
+              const b = placedBoxes[k];
+              if (box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0) {
+                overlaps = true;
+                break;
+              }
+            }
+            if (overlaps) continue;
+            placedBoxes.push(box);
+
+            const accentColor = getColorAtRatio(lf.properties.ratio);
+            ctx.beginPath();
+            ctx.roundRect(lx - bw / 2, ly - bh / 2, bw, bh, bh / 2);
+            ctx.fillStyle = isMajor ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.94)';
+            ctx.fill();
+            ctx.lineWidth = Math.max(1.2, (isMajor ? 2.2 : 1.5) * badgeScale);
+            ctx.strokeStyle = isMajor ? accentColor : 'rgba(15, 23, 42, 0.7)';
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(lx - bw / 2 + 8 * badgeScale, ly, 3.5 * badgeScale, 0, Math.PI * 2);
+            ctx.fillStyle = accentColor;
+            ctx.fill();
+
+            ctx.fillStyle = isMajor ? '#ffffff' : '#0f172a';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, lx - bw / 2 + 15 * badgeScale, ly + 0.5);
+          }
+          ctx.restore();
+        }
+
+        // 8. スタート地点ピン描画
+        {
+          const sx = toCanvasX(startPoint[0]);
+          const sy = toCanvasY(startPoint[1]);
+          const pinScale = Math.max(1.0, scale * 1.6);
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(sx, sy, 14 * pinScale, 0, Math.PI * 2);
+          ctx.fillStyle = '#10b981';
+          ctx.fill();
+          ctx.lineWidth = 3.5 * pinScale;
+          ctx.strokeStyle = '#ffffff';
+          ctx.stroke();
+
+          const labelStr = startPointName ? `🏠 ${startPointName} (0m)` : '🏠 スタート地点 (0m)';
+          const fSize = Math.round(13 * pinScale);
+          ctx.font = `800 ${fSize}px -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif`;
+          const lWidth = ctx.measureText(labelStr).width + 18 * pinScale;
+          const lHeight = fSize + 10 * pinScale;
+          ctx.beginPath();
+          ctx.roundRect(sx - lWidth / 2, sy - 16 * pinScale - lHeight, lWidth, lHeight, lHeight / 2);
+          ctx.fillStyle = '#0f172a';
+          ctx.fill();
+          ctx.lineWidth = 2 * pinScale;
+          ctx.strokeStyle = '#ffffff';
+          ctx.stroke();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(labelStr, sx, sy - 16 * pinScale - lHeight / 2 + 0.5);
+          ctx.restore();
+        }
+
+        // 9. ヘッダー情報カード・方位記号・スケール凡例オーバーレイの描画
+        const uiScale = canvasSide / 4096;
+        const pad = Math.round(36 * uiScale);
+
+        // 9-1. 左上タイトル＆条件カード
+        ctx.save();
+        const cardW = Math.round(780 * uiScale);
+        const cardH = Math.round(150 * uiScale);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.beginPath();
+        ctx.roundRect(pad, pad, cardW, cardH, Math.round(18 * uiScale));
+        ctx.fill();
+        ctx.lineWidth = Math.round(2 * uiScale);
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.stroke();
+
+        ctx.fillStyle = '#0f172a';
+        ctx.font = `800 ${Math.round(30 * uiScale)}px -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText('小平市 防災・徒歩距離スケールマップ', pad + Math.round(24 * uiScale), pad + Math.round(22 * uiScale));
+
+        ctx.fillStyle = '#334155';
+        ctx.font = `700 ${Math.round(20 * uiScale)}px -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif`;
+        const startDesc = startPointName ? `出発地: ${startPointName}` : `出発地: ${startPoint[1].toFixed(5)}, ${startPoint[0].toFixed(5)}`;
+        ctx.fillText(`${startDesc} ｜ 東西南北 各2km範囲 (Z18相当)`, pad + Math.round(24 * uiScale), pad + Math.round(68 * uiScale));
+        ctx.fillStyle = '#0284c7';
+        ctx.fillText(`歩行ペース設定: ${currentPaceLabel} ｜ 最大表示距離: ${(maxDistance / 1000).toFixed(1)}km`, pad + Math.round(24 * uiScale), pad + Math.round(102 * uiScale));
+        ctx.restore();
+
+        // 9-2. 右上コンパス
+        ctx.save();
+        const compR = Math.round(52 * uiScale);
+        const compX = canvasSide - pad - compR;
+        const compY = pad + compR;
+        ctx.beginPath();
+        ctx.arc(compX, compY, compR, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.fill();
+        ctx.lineWidth = Math.round(3 * uiScale);
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.stroke();
+
+        ctx.translate(compX, compY);
+        const ah = compR * 0.68;
+        const aw = compR * 0.24;
+        ctx.beginPath();
+        ctx.moveTo(0, -ah);
+        ctx.lineTo(aw, 0);
+        ctx.lineTo(-aw, 0);
+        ctx.closePath();
+        ctx.fillStyle = '#dc2626';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(0, ah);
+        ctx.lineTo(aw, 0);
+        ctx.lineTo(-aw, 0);
+        ctx.closePath();
+        ctx.fillStyle = '#94a3b8';
+        ctx.fill();
+
+        ctx.font = `900 ${Math.round(compR * 0.38)}px sans-serif`;
+        ctx.fillStyle = '#dc2626';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('N', 0, -ah - 2 * uiScale);
+        ctx.restore();
+
+        // 9-3. 左下グラデーション凡例＆500mスケールバー
+        if (showScaleOverlay) {
+          ctx.save();
+          const legW = Math.round(820 * uiScale);
+          const legH = Math.round(135 * uiScale);
+          const legX = pad;
+          const legY = canvasSide - pad - legH;
+
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+          ctx.beginPath();
+          ctx.roundRect(legX, legY, legW, legH, Math.round(18 * uiScale));
+          ctx.fill();
+          ctx.lineWidth = Math.round(2 * uiScale);
+          ctx.strokeStyle = '#cbd5e1';
+          ctx.stroke();
+
+          const barX = legX + Math.round(34 * uiScale);
+          const barY = legY + Math.round(52 * uiScale);
+          const barW = legW - Math.round(68 * uiScale);
+          const barH = Math.round(24 * uiScale);
+
+          const grad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+          const stops = PALETTES[currentPaletteKey] || PALETTES.standard;
+          for (const s of stops) {
+            grad.addColorStop(s.t, `rgb(${s.rgb[0]},${s.rgb[1]},${s.rgb[2]})`);
+          }
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.roundRect(barX, barY, barW, barH, barH / 2);
+          ctx.fill();
+
+          const fractions = [0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1];
+          ctx.font = `800 ${Math.round(18 * uiScale)}px -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif`;
+          ctx.textAlign = 'center';
+          fractions.forEach(f => {
+            const tx = barX + barW * f;
+            const d = Math.round(maxDistance * f);
+            const m = Math.round(d / walkingPace);
+            ctx.fillStyle = '#0f172a';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(d === 0 ? '0m' : formatDistShort(d), tx, barY - Math.round(6 * uiScale));
+            ctx.fillStyle = '#0284c7';
+            ctx.textBaseline = 'top';
+            ctx.fillText(`${m}分`, tx, barY + barH + Math.round(6 * uiScale));
+          });
+          ctx.restore();
+        }
+
+        // 9-4. 右下クレジット＆500m実寸スケールバー
+        ctx.save();
+        const scale500Px = (500 / metersPerPxZ18) * scale;
+        const sbRight = canvasSide - pad;
+        const sbLeft = sbRight - scale500Px;
+        const sbY = canvasSide - pad - Math.round(36 * uiScale);
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+        ctx.beginPath();
+        ctx.roundRect(sbLeft - Math.round(20 * uiScale), sbY - Math.round(36 * uiScale), scale500Px + Math.round(40 * uiScale), Math.round(72 * uiScale), Math.round(10 * uiScale));
+        ctx.fill();
+
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = Math.round(4 * uiScale);
+        ctx.beginPath();
+        ctx.moveTo(sbLeft, sbY - Math.round(10 * uiScale));
+        ctx.lineTo(sbLeft, sbY);
+        ctx.lineTo(sbRight, sbY);
+        ctx.lineTo(sbRight, sbY - Math.round(10 * uiScale));
+        ctx.stroke();
+
+        ctx.fillStyle = '#0f172a';
+        ctx.font = `800 ${Math.round(18 * uiScale)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('500 m (直線)', (sbLeft + sbRight) / 2, sbY - Math.round(4 * uiScale));
+
+        ctx.fillStyle = '#475569';
+        ctx.font = `600 ${Math.round(14 * uiScale)}px sans-serif`;
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'top';
+        ctx.fillText('© OpenStreetMap contributors (ODbL) | MapLibre', sbRight, sbY + Math.round(8 * uiScale));
+        ctx.restore();
+
+        if (cancelExportRequested) return;
+
+        // 10. ファイル生成＆ダウンロード実行
+        if (format === 'png') {
+          setProgress('PNG画像を生成・保存しています...', 95);
+          await new Promise((resolve, reject) => {
+            canvas.toBlob((blob) => {
+              if (!blob) {
+                reject(new Error('PNG生成に失敗しました'));
+                return;
+              }
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `小平市徒歩スケールマップ_Z18_東西南北2km.png`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              setTimeout(() => URL.revokeObjectURL(url), 10000);
+              resolve();
+            }, 'image/png');
+          });
+        } else {
+          setProgress('高解像度PDFを生成・保存しています...', 95);
+          await new Promise(r => setTimeout(r, 30));
+          const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+          const { jsPDF } = window.jspdf;
+          // 400mm × 400mm 大判正方形マップシートとして出力
+          const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: [400, 400]
+          });
+          pdf.addImage(jpegDataUrl, 'JPEG', 5, 5, 390, 390);
+          pdf.save(`小平市徒歩スケールマップ_Z18_東西南北2km.pdf`);
+        }
+
+        setProgress('✅ ダウンロードを開始しました！', 100);
+      } catch (err) {
+        console.error('Export error:', err);
+        setProgress(`⚠️ エラーが発生しました: ${err.message}`, 100);
+      } finally {
+        isExporting = false;
+        btnPNG.disabled = false;
+        btnPDF.disabled = false;
+        btnClose.textContent = '閉じる';
+      }
+    }
+
+    // =========================================================================
+    // 10. マップレイヤーのセットアップ ＆ データ読み込み
+    // =========================================================================
+    function createFacilityIcons() {
+      const types = [
+        { id: 'fac-water', bg: '#0284c7', text: '💧' },
+        { id: 'fac-shelter', bg: '#059669', text: '🏫' },
+        { id: 'fac-park', bg: '#16a34a', text: '🌳' },
+        { id: 'fac-welfare', bg: '#db2777', text: '🏥' }
+      ];
+      const dpr = 2;
+      for (const t of types) {
+        const size = 26 * dpr;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        ctx.beginPath();
+        ctx.arc(13, 13, 11, 0, Math.PI * 2);
+        ctx.fillStyle = t.bg;
+        ctx.fill();
+        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+        ctx.font = '13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(t.text, 13, 13.5);
+        map.addImage(t.id, ctx.getImageData(0, 0, size, size), { pixelRatio: dpr });
+      }
+    }
+
+    map.on('zoom', () => {
+      document.getElementById('zoomStatusText').textContent = `Z: ${map.getZoom().toFixed(1)}`;
+      applyTickZoomFilter();
+      if (tickIntervalSetting === 'auto') {
+        applyScaleVisibilityAndFilters();
+      }
+    });
+
+    map.on('load', async () => {
+      try {
+        updateLegendUI();
+        updateBadgeImages();
+        createFacilityIcons();
+
+        let roadsData = window.ROADS_DATA;
+        if (!roadsData) {
+          const [roadsRes, facRes] = await Promise.all([
+            fetch('./data/roads.json'),
+            fetch('./data/facilities.json')
+          ]);
+          roadsData = await roadsRes.json();
+          facilitiesData = await facRes.json();
+        } else {
+          facilitiesData = window.FACILITIES_DATA || [];
+        }
+
+        buildRoadGraph(roadsData);
+
+        const selectEl = document.getElementById('facilitySelect');
+        const groups = {
+          '給水拠点': [],
+          '指定避難所': [],
+          '広域避難場所': [],
+          'いっとき避難場所': [],
+          '福祉避難所・その他': []
+        };
+        facilitiesData.forEach((f, idx) => {
+          if (f.category === '給水拠点') groups['給水拠点'].push({ f, idx });
+          else if (f.category === '指定避難所') groups['指定避難所'].push({ f, idx });
+          else if (f.category === '広域避難場所') groups['広域避難場所'].push({ f, idx });
+          else if (f.category === 'いっとき避難場所') groups['いっとき避難場所'].push({ f, idx });
+          else groups['福祉避難所・その他'].push({ f, idx });
+        });
+
+        for (const [gName, items] of Object.entries(groups)) {
+          if (items.length === 0) continue;
+          const optGroup = document.createElement('optgroup');
+          optGroup.label = `■ ${gName} (${items.length})`;
+          for (const { f, idx } of items) {
+            const opt = document.createElement('option');
+            opt.value = String(idx);
+            opt.textContent = `${f.name}`;
+            optGroup.appendChild(opt);
+          }
+          selectEl.appendChild(optGroup);
+        }
+
+        map.addSource('road-scale-segments', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] }
+        });
+        map.addSource('road-scale-ticks', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] }
+        });
+        map.addSource('road-scale-labels', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] }
+        });
+        map.addSource('start-connector', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] }
+        });
+        map.addSource('target-route', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] }
+        });
+
+        const facFeatures = facilitiesData.map((f, idx) => {
+          let iconId = 'fac-shelter';
+          if (f.category === '給水拠点') iconId = 'fac-water';
+          else if (f.category === '広域避難場所' || f.category === 'いっとき避難場所') iconId = 'fac-park';
+          else if (f.category === '福祉避難所') iconId = 'fac-welfare';
+          return {
+            type: 'Feature',
+            properties: { idx, name: f.name, category: f.category, iconId },
+            geometry: { type: 'Point', coordinates: f.coords }
+          };
+        });
+        map.addSource('facilities-source', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: facFeatures }
+        });
+
+        const colorExpr = getMapLibreColorExpression(currentPaletteKey);
+
+        // 1. 道路グラデーション外枠
+        map.addLayer({
+          id: 'road-scale-casing-layer',
+          type: 'line',
+          source: 'road-scale-segments',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': 'rgba(15, 23, 42, 0.55)',
+            'line-width': [
+              'interpolate', ['linear'], ['zoom'],
+              13, 3.5,
+              15, 6.0,
+              17, 9.5,
+              19, 15.0
+            ]
+          }
+        });
+
+        // 2. 道路グラデーション本体
+        map.addLayer({
+          id: 'road-scale-line-layer',
+          type: 'line',
+          source: 'road-scale-segments',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': colorExpr,
+            'line-width': [
+              'interpolate', ['linear'], ['zoom'],
+              13, 2.2,
+              15, 4.0,
+              17, 6.8,
+              19, 11.0
+            ],
+            'line-opacity': 0.92
+          }
+        });
+
+        // 3. メジャー目盛り白縁取り
+        map.addLayer({
+          id: 'road-scale-ticks-casing-layer',
+          type: 'line',
+          source: 'road-scale-ticks',
+          filter: ['>=', ['get', 'level'], getMinTickLevelForZoom(map.getZoom())],
+          layout: { 'line-cap': 'butt' },
+          paint: {
+            'line-color': 'rgba(255, 255, 255, 0.92)',
+            'line-width': [
+              'match', ['get', 'level'],
+              4, 5.0,
+              3, 4.0,
+              2, 3.2,
+              2.4
+            ]
+          }
+        });
+
+        // 4. メジャー目盛り本体
+        map.addLayer({
+          id: 'road-scale-ticks-layer',
+          type: 'line',
+          source: 'road-scale-ticks',
+          filter: ['>=', ['get', 'level'], getMinTickLevelForZoom(map.getZoom())],
+          layout: { 'line-cap': 'butt' },
+          paint: {
+            'line-color': [
+              'case',
+              ['>=', ['get', 'level'], 3], '#0f172a',
+              colorExpr
+            ],
+            'line-width': [
+              'match', ['get', 'level'],
+              4, 3.0,
+              3, 2.2,
+              2, 1.8,
+              1.2
+            ]
+          }
+        });
+
+        // 5. 玄関〜道路スナップ点の破線コネクタ
+        map.addLayer({
+          id: 'start-connector-layer',
+          type: 'line',
+          source: 'start-connector',
+          paint: {
+            'line-color': '#059669',
+            'line-width': 3,
+            'line-dasharray': [2, 2]
+          }
+        });
+
+        // 6. ターゲット計測ルート強調レイヤー
+        map.addLayer({
+          id: 'target-route-casing',
+          type: 'line',
+          source: 'target-route',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': '#0f172a',
+            'line-width': 10,
+            'line-opacity': 0.85
+          }
+        });
+        map.addLayer({
+          id: 'target-route-line',
+          type: 'line',
+          source: 'target-route',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': '#fde047',
+            'line-width': 5.5
+          }
+        });
+
+        // 7. 避難所・給水拠点マーカーレイヤー
+        map.addLayer({
+          id: 'facilities-circle-layer',
+          type: 'symbol',
+          source: 'facilities-source',
+          layout: {
+            'icon-image': ['get', 'iconId'],
+            'icon-size': [
+              'interpolate', ['linear'], ['zoom'],
+              13, 0.7,
+              16, 0.95,
+              18, 1.1
+            ],
+            'icon-allow-overlap': true
+          }
+        });
+
+        // 8. 道路上のメジャー距離＆所要時間バッジレイヤー
+        map.addLayer({
+          id: 'road-scale-labels-layer',
+          type: 'symbol',
+          source: 'road-scale-labels',
+          layout: {
+            'icon-image': ['get', 'badgeId'],
+            'symbol-sort-key': ['get', 'priority'],
+            'icon-allow-overlap': false,
+            'icon-padding': [
+              'interpolate', ['linear'], ['zoom'],
+              13, 10,
+              16, 6,
+              18, 3
+            ]
+          }
+        });
+
+        document.getElementById('zoomStatusText').textContent = `Z: ${map.getZoom().toFixed(1)}`;
+        setStartLocation(startPoint, false, startPointName);
+        document.getElementById('loadingToast').style.display = 'none';
+
+      } catch (err) {
+        console.error('Initialization error:', err);
+        document.getElementById('loadingToast').innerHTML = '⚠️ データの読み込みに失敗しました。';
+      }
+    });
+
+    // =========================================================================
+    // 11. マップクリック・タップ・ホバー操作
+    // =========================================================================
+    let clickTimer = null;
+
+    map.on('click', (e) => {
+      if (clickTimer) clearTimeout(clickTimer);
+      const clickPoint = e.point;
+      const clickLngLat = e.lngLat;
+
+      clickTimer = setTimeout(() => {
+        const drawer = document.getElementById('settingsDrawer');
+        if (drawer.classList.contains('open')) {
+          toggleSettingsDrawer(false);
+        }
+
+        let clickedFacility = null;
+        if (showFacilities && map.getLayer('facilities-circle-layer')) {
+          const facHits = map.queryRenderedFeatures(clickPoint, {
+            layers: ['facilities-circle-layer']
+          });
+          if (facHits && facHits.length > 0) {
+            const p = facHits[0].properties;
+            const g = facHits[0].geometry.coordinates;
+            clickedFacility = {
+              name: `${p.name}`,
+              coords: [g[0], g[1]]
+            };
+          }
+        }
+
+        const coords = clickedFacility ? clickedFacility.coords : [clickLngLat.lng, clickLngLat.lat];
+        const facName = clickedFacility ? clickedFacility.name : null;
+
+        if (tapMode === 'measure') {
+          setTargetMeasurePoint(coords, facName);
+        } else {
+          // 地図のみモード中にタップで出発地を動かした場合は自動的にスケール表示をONにする
+          if (!showScaleOverlay) {
+            setScaleOverlay(true);
+          }
+          setStartLocation(coords, false, facName);
+        }
+      }, 180);
+    });
+
+    map.on('dblclick', () => {
+      if (clickTimer) {
+        clearTimeout(clickTimer);
+        clickTimer = null;
+      }
+    });
+
+    map.on('mousemove', (e) => {
+      const tooltip = document.getElementById('hoverTooltip');
+      if (!nodeDist || window.matchMedia('(pointer: coarse)').matches) {
+        tooltip.style.display = 'none';
+        return;
+      }
+
+      if (showFacilities && map.getLayer('facilities-circle-layer')) {
+        const facHits = map.queryRenderedFeatures(e.point, {
+          layers: ['facilities-circle-layer']
+        });
+        if (facHits && facHits.length > 0) {
+          const p = facHits[0].properties;
+          const g = facHits[0].geometry.coordinates;
+          const snap = findNearestEdge(g[0], g[1]);
+          let distInfo = '';
+          if (snap) {
+            const te = roadEdges[snap.edgeIdx];
+            const d = Math.min(nodeDist[te.u] + snap.t * te.len, nodeDist[te.v] + (1 - snap.t) * te.len);
+            if (Number.isFinite(d)) {
+              const mins = Math.max(1, Math.round(d / walkingPace));
+              distInfo = ` — 道のり 約${Math.round(d).toLocaleString()}m（徒歩 約${mins}分）`;
+            }
+          }
+          tooltip.style.display = 'block';
+          tooltip.style.left = `${e.point.x}px`;
+          tooltip.style.top = `${e.point.y}px`;
+          tooltip.textContent = `🏫 ${p.name}（${p.category}）${distInfo}`;
+          map.getCanvas().style.cursor = 'pointer';
+          return;
+        }
+      }
+
+      if (showScaleOverlay && map.getLayer('road-scale-line-layer')) {
+        const features = map.queryRenderedFeatures(e.point, {
+          layers: ['road-scale-line-layer', 'road-scale-casing-layer']
+        });
+        if (features && features.length > 0) {
+          const dist = features[0].properties.dist;
+          if (dist !== undefined) {
+            const mins = Math.max(1, Math.round(dist / walkingPace));
+            tooltip.style.display = 'block';
+            tooltip.style.left = `${e.point.x}px`;
+            tooltip.style.top = `${e.point.y}px`;
+            tooltip.textContent = `📏 道のり 約${dist.toLocaleString()}m（徒歩 約${mins}分）`;
+            map.getCanvas().style.cursor = 'pointer';
+            return;
+          }
+        }
+      }
+      tooltip.style.display = 'none';
+      map.getCanvas().style.cursor = '';
+    });
+
+    map.on('mouseout', () => {
+      document.getElementById('hoverTooltip').style.display = 'none';
+    });
+  </script>
+</body>
+</html>
